@@ -1,3 +1,8 @@
+### 8.1.5.48-Beta
+
+* Make bag scan dynamic
+
+
 ### 7.1.0.47-Beta
 
 * Some of the food values in legion were increased

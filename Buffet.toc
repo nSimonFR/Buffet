@@ -1,6 +1,7 @@
-## Interface: 70100
+## Interface: 80100
 ## Title: Buffet
 ## Notes: Food/water macro generator
+## Author: Leliel at EU-Eldre'Thalas
 ## Author: Tekkub Stoutwrithe
 ## X-Icon: Interface\Icons\INV_Misc_Food_DimSum
 
@@ -11,13 +12,16 @@
 ## X-LoadOn-InterfaceOptions: Buffet
 
 LibStub.lua
-tekIDmemo.lua
 tekKonfigAboutPanel.lua
 tekKonfigHeading.lua
 tekKonfigButton.lua
 CallbackHandler-1.0.lua
 LibDataBroker-1.1\LibDataBroker-1.1.lua
 
-Database.lua
+Localization.enUS.lua
+Localization.deDE.lua
+Localization.frFR.lua
+
+DynamicDb.lua
 Buffet.lua
 Config.lua
