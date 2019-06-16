@@ -1,4 +1,8 @@
-
+--[[
+    Special char must be escaped for:
+    - ThousandSeparator
+    - Patterns
+--]]
 if GetLocale() == "deDE" then
     ThousandSeparator = "%."
 

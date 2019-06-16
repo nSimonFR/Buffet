@@ -367,7 +367,7 @@ function Buffet:ParseTexts(texts, itemSubType)
 								health = tonumber(value)
 							end
 						end
-						if isOverTime then
+						if health and (health > 0 ) and isOverTime then
 							local overTime = text:match(Patterns.OverTime)
 							if overTime then
 								health = health * tonumber(overTime)
@@ -383,6 +383,7 @@ function Buffet:ParseTexts(texts, itemSubType)
 					if isHealth then
 						offsetMana = text:find(KeyWords.Health)
 					end
+
 					local value = text:match(Patterns.PctMana, offsetMana);
 					if value then
 						isPct = true
@@ -395,7 +396,24 @@ function Buffet:ParseTexts(texts, itemSubType)
 							mana = tonumber(value)
 						end
 					end
-					if isOverTime then
+
+					-- in some cases there is only one value for health and mana, so we need to try without the offsetMana
+					if not value then
+						local value = text:match(Patterns.PctMana);
+						if value then
+							isPct = true
+							value = value:gsub(ThousandSeparator,"")
+							mana = (tonumber(value) / 100) * mymana;
+						else
+							value = text:match(Patterns.FlatMana);
+							if value then
+								value = value:gsub(ThousandSeparator,"")
+								mana = tonumber(value)
+							end
+						end
+					end
+
+					if mana and (mana > 0) and isOverTime then
 						local overTime = text:match(Patterns.OverTime)
 						if overTime then
 							mana = mana * tonumber(overTime)

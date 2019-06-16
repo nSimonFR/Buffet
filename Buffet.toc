@@ -20,7 +20,9 @@ LibDataBroker-1.1\LibDataBroker-1.1.lua
 
 Localization.enUS.lua
 Localization.deDE.lua
+Localization.esES.lua
 Localization.frFR.lua
+Localization.itIT.lua
 
 DynamicDb.lua
 Buffet.lua

@@ -1,7 +1,5 @@
 --[[
 	Db strcuture:
-	ns.itemdb["bandage"] = { id: value, id: value, ... ]
-	ns.allitems[id] = value
 	ns.bests["bandage"] = {}
 
 	categories:
