@@ -1,3 +1,10 @@
+### 8.1.5.49-Beta
+
+* Lots of improvements
+* More Localizations
+* Slash command: /buffet
+
+
 ### 8.1.5.48-Beta
 
 * Make bag scan dynamic

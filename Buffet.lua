@@ -13,7 +13,7 @@ local buffetTooltipFromTemplate = nil
 local lastScan = 0
 local nextScan = 0
 local lastScanDelay = 5
-local nextScanDelay = 5
+local nextScanDelay = 1
 local tooltipCache = {}
 local itemCache = {}
 local stats = {}
@@ -49,8 +49,7 @@ function Buffet:SlashHandler(message, editbox)
 	local _, _, cmd, args = string.find(message, "%s?(%w+)%s?(.*)")
 
 	if cmd == "stats" then
-		local total = 0
-		self:Print("Statistics:")
+		self:Print("Session Statistics:")
 		self:Print("- Functions called:")
 		for k,v in pairs(stats.timers) do
 			local item = v
@@ -59,13 +58,11 @@ function Buffet:SlashHandler(message, editbox)
 				avgTime = v.totalTime / v.count
 			end
 			self:Print(string.format("  - %s: %d time(s), total time: %.5fs, average time: %.5fs", k, v.count, v.totalTime, avgTime))
-			total = total + v.totalTime
 		end
 		self:Print("- Events raised:")
 		for k,v in pairs(stats.events) do
 			self:Print(string.format("  - %s: %d time(s)", k, v))
 		end
-		self:Print(string.format("- Total time use by Buffet: %.5fs", total))
 	elseif cmd == "scan" then
 		lastScan = 0
 		self:Print("Scanning bags...")
@@ -181,7 +178,7 @@ function Buffet:UpdateCallback(...)
 		if nextScan <= t then
 			if not InCombatLockdown() then
 				self:DisableDelayedScan()
-				self:ScanDynamic()
+				self:ScanDynamic(true)
 			end
 		end
 	end
@@ -306,12 +303,12 @@ function Buffet:SetBest(cat, id, value, stack)
 	end
 end
 
-function Buffet:ScanDynamic()
+function Buffet:ScanDynamic(force)
+	force = force or false
 	local currentTime = self:MyGetTime()
 	-- [[ avoid scanning bag too often, ie. on multiple consecutive bag update
-	if lastScan + lastScanDelay > currentTime then
-		dirty = true
-		do return end
+	if not force and (lastScan + lastScanDelay > currentTime) then
+		return
 	end
 	lastScan = currentTime
 	--]]
