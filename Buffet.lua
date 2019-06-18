@@ -15,6 +15,7 @@ local nextScan = 0
 local lastScanDelay = 5
 local nextScanDelay = 1
 local tooltipCache = {}
+local scanAttempt = {}
 local itemCache = {}
 local stats = {}
 
@@ -193,8 +194,8 @@ function Buffet:EnableDelayedScan()
 end
 
 function Buffet:DisableDelayedScan()
-	self:SetScript("OnUpdate", nil)
 	nextScan = 0
+	self:SetScript("OnUpdate", nil)
 end
 
 function Buffet:TableCount(t)
@@ -215,6 +216,7 @@ end
 function Buffet:ScanTooltip(itemlink, itemId)
 	local t = self:MyGetTime()
 	local cached = false
+	local failedAttempt = false
 
 	if tooltipCache[itemId] then
 		cached = true
@@ -259,16 +261,28 @@ function Buffet:ScanTooltip(itemlink, itemId)
 		neededLines = 4
 	end
 
-	if self:TableCount(texts) >= neededLines then
+	local l = self:TableCount(texts)
+	if l >= neededLines then
 		tooltipCache[itemId] = texts
 		cached = true
 	else
-		dirty = true
-		self:EnableDelayedScan()
+		if scanAttempt[itemId] then
+			-- try to scan tooltip only 3 times
+			if scanAttempt[itemId] < 3 then
+				failedAttempt = true
+				scanAttempt[itemId] = scanAttempt[itemId] + 1
+			else
+				tooltipCache[itemId] = texts
+				cached = true
+			end
+		else
+			scanAttempt[itemId] = 1
+			failedAttempt = true
+		end
 	end
 
 	self:StatsTimerUpdate("ScanTooltip", t)
-	return texts, cached
+	return texts, cached, failedAttempt
 end
 
 function Buffet:IsValidItemClass(itemClassId)
@@ -322,6 +336,8 @@ function Buffet:ScanDynamic(force)
 		t.stack = -1
 	end
 
+	local delayedScanRequired = false
+
 	for bag=0,4 do
 		for slot=1,GetContainerNumSlots(bag) do
 			local _, itemCount, _, _, _, _, _, _, _, itemId = GetContainerItemInfo(bag,slot)
@@ -353,9 +369,12 @@ function Buffet:ScanDynamic(force)
 						health = itemCache[itemId].health
 						mana = itemCache[itemId].mana
 					else
-						--self:Debug("Live parsing for:", itemName)
+						self:Debug("Live parsing for:", itemName)
 						-- parse tooltip values
-						local texts, cached = self:ScanTooltip(itemLink, itemId)
+						local texts, cached, failedAttempt = self:ScanTooltip(itemLink, itemId)
+						if failedAttempt then
+							delayedScanRequired = true
+						end
 						isHealth, isMana, isConjured, isWellFed, health, mana, isPct = self:ParseTexts(texts, itemSubClassId)
 						-- cache item only if tooltip was cached (and not Pct item)
 						if cached and not isPct then
@@ -431,12 +450,16 @@ function Buffet:ScanDynamic(force)
 	self:Edit("AutoMP", self.db.macroMP, water,bests.managem.id or bests.mppot.id)
 
 	-- if we didn't found any food or water, and it is the first run, queue a delayed scan
-	if not food and not water and firstRun then
+	if (not food and not water) and firstRun then
 		firstRun = false
 		self:EnableDelayedScan()
 	end
 
 	dirty = false
+
+	if delayedScanRequired then
+		self:EnableDelayedScan()
+	end
 
 	self:StatsTimerUpdate("ScanDynamic", currentTime)
 end
