@@ -25,12 +25,3 @@ Patterns.PctHealth = "([%d%.]+)%%.-health"
 Patterns.PctMana = "([%d%.]+)%%.-mana"
 Patterns.OverTime = "for (%d+) sec"
 
-ItemType = {}
-ItemType.Consumable = "Consumable"
-
-ItemSubType = {}
-ItemSubType.Bandage = "Bandage"
-ItemSubType.Consumable = "Consumable"
-ItemSubType.FoodAndDrink = "Food & Drink"
-ItemSubType.Other = "Other"
-ItemSubType.Potion = "Potion"

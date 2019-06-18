@@ -22,12 +22,4 @@ if GetLocale() == "frFR" then
     Patterns.PctHealth = "([%d%.]+)%%.-vie"
     Patterns.PctMana = "([%d%.]+)%%.-mana"
     Patterns.OverTime = "pendant (%d+) s%."
-
-    ItemType.Consumable = "Consommable"
-
-    ItemSubType.Bandage = "Bandage"
-    ItemSubType.Consumable = "Consommable"
-    ItemSubType.FoodAndDrink = "Nourriture et boissons"
-    ItemSubType.Other = "Autre"
-    ItemSubType.Potion = "Potion"
 end

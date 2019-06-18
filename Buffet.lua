@@ -6,12 +6,17 @@
 local myname, ns = ...
 
 local defaults = {macroHP = "#showtooltip\n%MACRO%", macroMP = "#showtooltip\n%MACRO%"}
+local firstRun = true
 local dirty = false
 local bests = ns.bests
 local buffetTooltipFromTemplate = nil
 local lastScan = 0
+local nextScan = 0
+local lastScanDelay = 5
+local nextScanDelay = 5
 local tooltipCache = {}
 local itemCache = {}
+local stats = {}
 
 local mylevel = 0
 local myhealth = 0
@@ -36,6 +41,45 @@ function Buffet:Debug(...)
 	--]]
 end
 
+function Buffet:MyGetTime()
+	return (debugprofilestop() / 1000)
+end
+
+function Buffet:SlashHandler(message, editbox)
+	local _, _, cmd, args = string.find(message, "%s?(%w+)%s?(.*)")
+
+	if cmd == "stats" then
+		local total = 0
+		self:Print("Statistics:")
+		self:Print("- Functions called:")
+		for k,v in pairs(stats.timers) do
+			local item = v
+			local avgTime = 0
+			if v.count > 0 then
+				avgTime = v.totalTime / v.count
+			end
+			self:Print(string.format("  - %s: %d time(s), total time: %.5fs, average time: %.5fs", k, v.count, v.totalTime, avgTime))
+			total = total + v.totalTime
+		end
+		self:Print("- Events raised:")
+		for k,v in pairs(stats.events) do
+			self:Print(string.format("  - %s: %d time(s)", k, v))
+		end
+		self:Print(string.format("- Total time use by Buffet: %.5fs", total))
+	elseif cmd == "scan" then
+		lastScan = 0
+		self:Print("Scanning bags...")
+		self:ScanDynamic()
+		self:Print("Done!")
+	else
+		self:Print("Usage:")
+		self:Print("/buffet scan: perform a manual scan of your bags")
+		self:Print("/buffet stats: show some internal statistics")
+	end
+end
+SLASH_BUFFET1 = "/buffet"
+SlashCmdList["BUFFET"] = function(message, editbox) Buffet:SlashHandler(message, editbox) end
+
 function Buffet:ADDON_LOADED(event, addon)
 	if addon:lower() ~= "buffet" then return end
 
@@ -45,22 +89,40 @@ function Buffet:ADDON_LOADED(event, addon)
 	self:UnregisterEvent("ADDON_LOADED")
 	self.ADDON_LOADED = nil
 
+	stats.events = {}
+	stats.timers = {}
+
 	if IsLoggedIn() then self:PLAYER_LOGIN() else self:RegisterEvent("PLAYER_LOGIN") end
 end
 
 function Buffet:PLAYER_LOGIN()
+	stats.events["PLAYER_REGEN_ENABLED"] = 0
+	stats.events["PLAYER_LEVEL_UP"] = 0
+	stats.events["BAG_UPDATE_DELAYED"] = 0
+	stats.events["UNIT_MAXHEALTH"] = 0
+	stats.events["UNIT_MAXPOWER"] = 0
+
+	stats.timers["ScanTooltip"] = { totalTime = 0, count = 0 }
+	stats.timers["ScanDynamic"] = { totalTime = 0, count = 0 }
+	stats.timers["ParseTexts"] = { totalTime = 0, count = 0 }
+	stats.timers["UpdateCallback"] = { totalTime = 0, count = 0 }
+
 	self:RegisterEvent("PLAYER_LOGOUT")
 
-	self:RegisterEvent("PLAYER_ENTERING_WORLD")
 	self:RegisterEvent("PLAYER_REGEN_ENABLED")
 	self:RegisterEvent("PLAYER_LEVEL_UP")
 	self:RegisterEvent("BAG_UPDATE_DELAYED")
-
 	self:RegisterEvent("UNIT_MAXHEALTH")
 	self:RegisterEvent("UNIT_MAXPOWER")
 
 	self:UnregisterEvent("PLAYER_LOGIN")
 	self.PLAYER_LOGIN = nil
+
+	mylevel = UnitLevel("player")
+	myhealth = UnitHealthMax("player")
+	mymana = UnitPowerMax("player")
+
+	dirty = true
 end
 
 function Buffet:PLAYER_LOGOUT()
@@ -72,20 +134,71 @@ function Buffet:PLAYER_LOGOUT()
 end
 
 function Buffet:PLAYER_REGEN_ENABLED()
+	stats.events["PLAYER_REGEN_ENABLED"] = stats.events["PLAYER_REGEN_ENABLED"] + 1
 	if dirty then self:ScanDynamic() end
 end
 
-function Buffet:PLAYER_ENTERING_WORLD()
-	if not InCombatLockdown() then self:ScanDynamic() end
-end
-
 function Buffet:BAG_UPDATE_DELAYED()
+	stats.events["BAG_UPDATE_DELAYED"] = stats.events["BAG_UPDATE_DELAYED"] + 1
 	dirty = true
 	if not InCombatLockdown() then self:ScanDynamic() end
 end
-Buffet.PLAYER_LEVEL_UP = Buffet.BAG_UPDATE_DELAYED
-Buffet.UNIT_MAXHEALTH = Buffet.BAG_UPDATE_DELAYED
-Buffet.UNIT_MAXPOWER = Buffet.BAG_UPDATE_DELAYED
+
+function Buffet:PLAYER_LEVEL_UP(event, arg1)
+	stats.events["PLAYER_LEVEL_UP"] = stats.events["PLAYER_LEVEL_UP"] + 1
+	dirty = true
+	mylevel = arg1
+	if not InCombatLockdown() then self:ScanDynamic() end
+end
+
+function Buffet:UNIT_MAXHEALTH(event, arg1)
+	if arg1 == "player" then
+		stats.events["UNIT_MAXHEALTH"] = stats.events["UNIT_MAXHEALTH"] + 1
+		dirty = true
+		myhealth = UnitHealthMax("player")
+		if not InCombatLockdown() then self:ScanDynamic() end
+	end
+end
+
+function Buffet:UNIT_MAXPOWER(event, arg1, arg2)
+	if (arg1 == "player") and (arg2 == "MANA") then
+		stats.events["UNIT_MAXPOWER"] = stats.events["UNIT_MAXPOWER"] + 1
+		dirty = true
+		mymana = UnitPowerMax("player")
+		if not InCombatLockdown() then self:ScanDynamic() end
+	end
+end
+
+function Buffet:StatsTimerUpdate(key, t)
+	stats.timers[key].count = stats.timers[key].count + 1
+	local t2 = self:MyGetTime()
+	stats.timers[key].totalTime = stats.timers[key].totalTime + (t2 - t)
+end
+
+function Buffet:UpdateCallback(...)
+	local t = self:MyGetTime()
+	if nextScan > 0 then
+		if nextScan <= t then
+			if not InCombatLockdown() then
+				self:DisableDelayedScan()
+				self:ScanDynamic()
+			end
+		end
+	end
+	self:StatsTimerUpdate("UpdateCallback", t)
+end
+
+function Buffet:EnableDelayedScan()
+	if nextScan == 0 then -- enable it only once
+		nextScan = self:MyGetTime() + nextScanDelay
+		self:SetScript("OnUpdate", self.UpdateCallback)
+	end
+end
+
+function Buffet:DisableDelayedScan()
+	self:SetScript("OnUpdate", nil)
+	nextScan = 0
+end
 
 function Buffet:TableCount(t)
 	local c = 0
@@ -97,50 +210,77 @@ function Buffet:TableCount(t)
 	return c
 end
 
+function Buffet:MakeTooltip()
+	local tooltip = buffetTooltipFromTemplate or CreateFrame("GAMETOOLTIP", "buffetTooltipFromTemplate", nil, "GameTooltipTemplate")
+	return tooltip
+end
+
 function Buffet:ScanTooltip(itemlink, itemId)
+	local t = self:MyGetTime()
+	local cached = false
+
 	if tooltipCache[itemId] then
-		return tooltipCache[itemId]
+		cached = true
+		self:StatsTimerUpdate("ScanTooltip", t)
+		return tooltipCache[itemId], cached
 	end
 
 	local texts = {}
-	local tooltip = buffetTooltipFromTemplate or CreateFrame("GAMETOOLTIP", "buffetTooltipFromTemplate", nil, "GameTooltipTemplate")
+	local tooltip = buffetTooltipFromTemplate or self:MakeTooltip()
 	tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
 	tooltip:ClearLines()
 	tooltip:SetHyperlink(itemlink)
+
+	local isConjuredItem = false
+
+	-- [[
 	for i = 1, tooltip:NumLines() do
 		local text = _G["buffetTooltipFromTemplateTextLeft"..i]:GetText() or ""
 		if text ~= "" then
 			texts[i] = text
+			if self:StringContains(text:lower(), KeyWords.ConjuredItem:lower()) then
+				isConjuredItem = true
+			end
 		end
 	end
+	--]]
 
-	-- some time the tooltip is not properly generated on the first pass, all item should have at least 3 lines
-	if self:TableCount(texts) >= 3 then
-		tooltipCache[itemId] = texts
-	end
-
-	return texts
---[[
-	-- this was suppose to works...
-	local regions = tooltip:GetRegions()
-	for i = 1, select("#", regions) do
-		local region = select(i, regions)
-		if region and region:GetObjectType() == "FontString" then
+	--[[
+	-- not working :(
+	for i=1,select("#",tooltip:GetRegions()) do
+		local region=select(i,tooltip:GetRegions())
+		if region and region:GetObjectType()=="FontString" and region:GetText() then
 			local text = region:GetText()
-			texts[i] = text -- string or nil
+			texts[i] = text
 		end
 	end
-	return texts
---]]
+	--]]
+
+	-- some time the tooltip is not properly generated on the first pass, all items should have at least 3 lines, 4 for conjured items
+	local neededLines = 3
+	if isConjuredItem then
+		neededLines = 4
+	end
+
+	if self:TableCount(texts) >= neededLines then
+		tooltipCache[itemId] = texts
+		cached = true
+	else
+		dirty = true
+		self:EnableDelayedScan()
+	end
+
+	self:StatsTimerUpdate("ScanTooltip", t)
+	return texts, cached
 end
 
-function Buffet:IsValidItemType(itemType)
-	return string.lower(itemType) == string.lower(ItemType.Consumable)
+function Buffet:IsValidItemClass(itemClassId)
+	return itemClassId == ItemClasses.Consumable
 end
 
-function Buffet:IsValidItemSubType(itemSubType)
-	for k,v in pairs(ItemSubType) do
-		if string.lower(v) == string.lower(itemSubType) then
+function Buffet:IsValidItemSubClass(itemSubClassId)
+	for k,v in pairs(ItemSubClasses) do
+		if itemSubClassId == v then
 			return true
 		end
 	end
@@ -167,13 +307,14 @@ function Buffet:SetBest(cat, id, value, stack)
 end
 
 function Buffet:ScanDynamic()
-	-- avoid scanning bag too often
-	local currentTime = GetTime()
-	if lastScan + 5 > currentTime then
+	local currentTime = self:MyGetTime()
+	-- [[ avoid scanning bag too often, ie. on multiple consecutive bag update
+	if lastScan + lastScanDelay > currentTime then
 		dirty = true
 		do return end
 	end
 	lastScan = currentTime
+	--]]
 
 	self:Debug("Scanning bags...")
 
@@ -184,26 +325,17 @@ function Buffet:ScanDynamic()
 		t.stack = -1
 	end
 
-	-- clear all pct item from cache as health/mana is dynamic
-	for k,_ in pairs(itemCache) do
-		if itemCache[k] and itemCache[k].isPct then
-			itemCache[k] = nil
-		end
-	end
-
-	mylevel = UnitLevel("player")
-	myhealth = UnitHealthMax("player")
-	mymana = UnitPowerMax("player")
-
 	for bag=0,4 do
 		for slot=1,GetContainerNumSlots(bag) do
 			local _, itemCount, _, _, _, _, _, _, _, itemId = GetContainerItemInfo(bag,slot)
-			if itemId then
-				local itemName, itemLink, _, _, itemMinLevel, itemType, itemSubType = GetItemInfo(itemId)
+			if itemId then -- slot not empty
+				local itemName, itemLink, _, _, itemMinLevel, _, _, _, _, _, _, itemClassId, itemSubClassId = GetItemInfo(itemId)
+
+				-- ensure itemMinLevel is not nil
 				itemMinLevel = itemMinLevel or 0
 
-				if itemLink and (itemMinLevel <= mylevel) and self:IsValidItemType(itemType) and self:IsValidItemSubType(itemSubType) then
-					self:Debug("Debug:", itemName, itemType, itemSubType)
+				if itemLink and (itemMinLevel <= mylevel) and self:IsValidItemClass(itemClassId) and self:IsValidItemSubClass(itemSubClassId) then
+					-- self:Debug("Debug:", itemName, itemClassId, itemSubClassId)
 
 					local isHealth = false
 					local isMana = false
@@ -215,7 +347,7 @@ function Buffet:ScanDynamic()
 					local mana = 0;
 
 					if itemCache[itemId] then
-						self:Debug("Use item cache for:", itemName)
+						--self:Debug("Use item cache for:", itemName)
 						isHealth = itemCache[itemId].isHealth
 						isMana = itemCache[itemId].isMana
 						isConjured = itemCache[itemId].isConjured
@@ -224,70 +356,70 @@ function Buffet:ScanDynamic()
 						health = itemCache[itemId].health
 						mana = itemCache[itemId].mana
 					else
-						self:Debug("Live parsing for:", itemName)
+						--self:Debug("Live parsing for:", itemName)
 						-- parse tooltip values
-						local texts = self:ScanTooltip(itemLink, itemId)
-						isHealth, isMana, isConjured, isWellFed, health, mana, isPct = self:ParseTexts(texts, itemSubType)
-						itemCache[itemId] = {}
-						itemCache[itemId].isHealth = isHealth
-						itemCache[itemId].isMana = isMana
-						itemCache[itemId].isConjured = isConjured
-						itemCache[itemId].isWellFed = isWellFed
-						itemCache[itemId].isPct = isPct
-						itemCache[itemId].health = health
-						itemCache[itemId].mana = mana
+						local texts, cached = self:ScanTooltip(itemLink, itemId)
+						isHealth, isMana, isConjured, isWellFed, health, mana, isPct = self:ParseTexts(texts, itemSubClassId)
+						-- cache item only if tooltip was cached (and not Pct item)
+						if cached and not isPct then
+							itemCache[itemId] = {}
+							itemCache[itemId].isHealth = isHealth
+							itemCache[itemId].isMana = isMana
+							itemCache[itemId].isConjured = isConjured
+							itemCache[itemId].isWellFed = isWellFed
+							itemCache[itemId].isPct = isPct
+							itemCache[itemId].health = health
+							itemCache[itemId].mana = mana
+						end
 					end
 
 					-- set found values to best
 					if not isWellFed and ((health and (health > 0)) or (mana and (mana > 0)) ) then
-						self:Debug("Found item: ", itemName, "isHealth: ", isHealth, "isMana: ", isMana, "health: ", health, "mana: ", mana, "isPct: ", isPct)
+						--self:Debug("Found item: ", itemName, "isHealth: ", isHealth, "isMana: ", isMana, "health: ", health, "mana: ", mana, "isPct: ", isPct)
 
 						local cat = nil
-						if itemSubType == ItemSubType.FoodAndDrink then
+						if itemSubClassId == ItemSubClasses.FoodAndDrink then
 							if isHealth then
 								if isConjured then
-									cat = ns.categories.percfood;
+									cat = ns.categories.percfood
 								else
-									cat = ns.categories.food;
+									cat = ns.categories.food
 								end
 								self:SetBest(cat, itemId, health, itemCount)
 							end
 							if isMana then
 								if isConjured then
-									cat = ns.categories.percwater;
+									cat = ns.categories.percwater
 								else
-									cat = ns.categories.water;
+									cat = ns.categories.water
 								end
 								self:SetBest(cat, itemId, mana, itemCount)
 							end
-						elseif itemSubType == ItemSubType.Potion then
+						elseif itemSubClassId == ItemSubClasses.Potion then
 							if isHealth then
-								cat = ns.categories.hppot;
+								cat = ns.categories.hppot
 								self:SetBest(cat, itemId, health, itemCount)
 							end
 							if isMana then
-								cat = ns.categories.mppot;
+								cat = ns.categories.mppot
 								self:SetBest(cat, itemId, mana, itemCount)
 							end
-						elseif itemSubType == ItemSubType.Bandage then
+						elseif itemSubClassId == ItemSubClasses.Bandage then
 							if isHealth then
-								cat = ns.categories.bandage;
+								cat = ns.categories.bandage
 								self:SetBest(cat, itemId, health, itemCount)
 							end
-						elseif itemSubType == ItemSubType.Other then -- health stone / mana gem
+						elseif itemSubClassId == ItemSubClasses.Other then -- health stone / mana gem
 							if isConjured then
 								if isHealth then
 									cat = ns.categories.healthstone
 									self:SetBest(cat, itemId, health, itemCount)
 								end
 								if isMana then
-									cat = ns.categories.manastone;
+									cat = ns.categories.manastone
 									self:SetBest(cat, itemId, health, itemCount)
 								end
 							end
-						else
-							-- unknow case
-							self:Print("Unknown item, please report it to the author: ", itemName)
 						end
 					end
 				end
@@ -301,10 +433,20 @@ function Buffet:ScanDynamic()
 	self:Edit("AutoHP", self.db.macroHP, food, bests.healthstone.id or bests.hppot.id, bests.bandage.id)
 	self:Edit("AutoMP", self.db.macroMP, water,bests.managem.id or bests.mppot.id)
 
+	-- if we didn't found any food or water, and it is the first run, queue a delayed scan
+	if not food and not water and firstRun then
+		firstRun = false
+		self:EnableDelayedScan()
+	end
+
 	dirty = false
+
+	self:StatsTimerUpdate("ScanDynamic", currentTime)
 end
 
-function Buffet:ParseTexts(texts, itemSubType)
+function Buffet:ParseTexts(texts, itemSubClassId)
+	local t = self:MyGetTime()
+
 	local isHealth = false
 	local isMana = false
 	local isConjured = false
@@ -336,7 +478,7 @@ function Buffet:ParseTexts(texts, itemSubType)
 
 		-- Usable item
 		if self:StringContains(text, KeyWords.Use:lower()) then
-			if itemSubType == ItemSubType.Bandage then
+			if itemSubClassId == ItemSubClasses.Bandage then
 				isHealth = self:StringContains(text, KeyWords.Damage:lower())
 			else
 				isHealth = self:StringContains(text, KeyWords.Health:lower())
@@ -345,7 +487,7 @@ function Buffet:ParseTexts(texts, itemSubType)
 			isMana = self:StringContains(text, KeyWords.Mana:lower())
 
 			if isHealth then
-				if itemSubType == ItemSubType.Bandage then
+				if itemSubClassId == ItemSubClasses.Bandage then
 					if self:StringContains(text, KeyWords.Heals:lower()) then
 						value = text:match(Patterns.FlatDamage);
 						if value then
@@ -423,6 +565,8 @@ function Buffet:ParseTexts(texts, itemSubType)
 			end
 		end
 	end
+
+	self:StatsTimerUpdate("ParseTexts", t)
 
 	return isHealth, isMana, isConjured, isWellFed, health, mana, isPct
 end

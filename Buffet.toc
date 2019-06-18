@@ -18,6 +18,9 @@ tekKonfigButton.lua
 CallbackHandler-1.0.lua
 LibDataBroker-1.1\LibDataBroker-1.1.lua
 
+
+Const.lua
+
 Localization.enUS.lua
 Localization.deDE.lua
 Localization.esES.lua
