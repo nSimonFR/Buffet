@@ -1,3 +1,9 @@
+### 8.1.5.51-Beta
+
+* Item cache is now saved to disk (per account) reducing the time spent in tooltip and bags scanning
+* New slash commands
+
+
 ### 8.1.5.50-Beta
 
 * Bug fix: some items can have less than 3 lines tooltip.. logic rewritten

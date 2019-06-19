@@ -46,6 +46,13 @@ function Buffet:MyGetTime()
 	return (debugprofilestop() / 1000)
 end
 
+function Buffet:BoolToStr(b)
+	if b then
+		return "Yes"
+	end
+	return "No"
+end
+
 function Buffet:SlashHandler(message, editbox)
 	local _, _, cmd, args = string.find(message, "%s?(%w+)%s?(.*)")
 
@@ -64,13 +71,51 @@ function Buffet:SlashHandler(message, editbox)
 		for k,v in pairs(stats.events) do
 			self:Print(string.format("  - %s: %d time(s)", k, v))
 		end
+		self:Print("- Caches size:")
+		self:Print(string.format("  - %d item(s) cached", self:TableCount(itemCache)))
+		self:Print(string.format("  - %d tooltip(s) cached", self:TableCount(tooltipCache)))
+	elseif cmd == "clear" then
+		tooltipCache = {}
+		itemCache = {}
 	elseif cmd == "scan" then
-		lastScan = 0
 		self:Print("Scanning bags...")
-		self:ScanDynamic()
+		self:ScanDynamic(true)
 		self:Print("Done!")
+	elseif cmd == "info" then
+		local itemString = args or nil
+		if itemString then
+			local _, itemLink = GetItemInfo(itemString)
+			if itemLink then
+				local itemId = string.match(itemLink, "item:([%d]+)")
+				if itemId then
+					itemId = tonumber(itemId)
+					if itemCache[itemId] then
+						local data = itemCache[itemId]
+						self:Print("Item " .. itemString .. ":")
+						self:Print("- Is health: " .. self:BoolToStr(data.isHealth))
+						self:Print("- Is mana: " .. self:BoolToStr(data.isMana))
+						self:Print("- Is well fed: " .. self:BoolToStr(data.isWellFed))
+						self:Print("- Is conjured: " .. self:BoolToStr(data.isConjured))
+						self:Print("- Is percent: " .. self:BoolToStr(data.isPct))
+						if data.isPct then
+							self:Print(string.format("- health value: %d", data.health * 100))
+							self:Print(string.format("- mana value: %d", data.mana * 100))
+						else
+							self:Print(string.format("- health value: %d", data.health))
+							self:Print(string.format("- mana value: %d", data.mana))
+						end
+					else
+						self:Print("Item " .. itemString .. ": Not in cache")
+					end
+				end
+			end
+		else
+			self:Print("Invalid argument")
+		end
 	else
 		self:Print("Usage:")
+		self:Print("/buffet clear: clear all caches")
+		self:Print("/buffet info <itemLink>: display info about <itemLink> (if item is in cache)")
 		self:Print("/buffet scan: perform a manual scan of your bags")
 		self:Print("/buffet stats: show some internal statistics")
 	end
@@ -81,8 +126,23 @@ SlashCmdList["BUFFET"] = function(message, editbox) Buffet:SlashHandler(message,
 function Buffet:ADDON_LOADED(event, addon)
 	if addon:lower() ~= "buffet" then return end
 
+	-- load saved variables
+	BuffetItemDB = BuffetItemDB or {}
 	BuffetDB = setmetatable(BuffetDB or {}, {__index = defaults})
 	self.db = BuffetDB
+
+	local _, build = GetBuildInfo()
+	local currBuild, prevBuild = tonumber(build), BuffetItemDB.build
+
+	-- load items cache only if we are running the same build
+	if prevBuild and (prevBuild == currBuild)then
+		itemCache = BuffetItemDB.itemCache or {}
+	end
+
+	-- clean saved variables
+	BuffetItemDB = {}
+	BuffetItemDB.itemCache = itemCache
+	BuffetItemDB.build = currBuild
 
 	self:UnregisterEvent("ADDON_LOADED")
 	self.ADDON_LOADED = nil
@@ -129,6 +189,8 @@ function Buffet:PLAYER_LOGOUT()
 			self.db[i] = nil
 		end
 	end
+	-- save itemCache per account
+	BuffetItemDB.itemCache = itemCache
 end
 
 function Buffet:PLAYER_REGEN_ENABLED()
@@ -369,15 +431,15 @@ function Buffet:ScanDynamic(force)
 						health = itemCache[itemId].health
 						mana = itemCache[itemId].mana
 					else
-						self:Debug("Live parsing for:", itemName)
+						--self:Debug("Live parsing for:", itemName)
 						-- parse tooltip values
 						local texts, cached, failedAttempt = self:ScanTooltip(itemLink, itemId)
 						if failedAttempt then
 							delayedScanRequired = true
 						end
 						isHealth, isMana, isConjured, isWellFed, health, mana, isPct = self:ParseTexts(texts, itemSubClassId)
-						-- cache item only if tooltip was cached (and not Pct item)
-						if cached and not isPct then
+						-- cache item only if tooltip was cached
+						if cached then
 							itemCache[itemId] = {}
 							itemCache[itemId].isHealth = isHealth
 							itemCache[itemId].isMana = isMana
@@ -390,8 +452,18 @@ function Buffet:ScanDynamic(force)
 					end
 
 					-- set found values to best
-					if not isWellFed and ((health and (health > 0)) or (mana and (mana > 0)) ) then
+					if not isWellFed and ( (health and (health > 0)) or (mana and (mana > 0)) ) then
 						--self:Debug("Found item: ", itemName, "isHealth: ", isHealth, "isMana: ", isMana, "health: ", health, "mana: ", mana, "isPct: ", isPct)
+
+						-- update pct values
+						if isPct then
+							if (health and (health > 0)) then
+								health = health * myhealth
+							end
+							if (mana and (mana > 0)) then
+								mana = mana * mymana
+							end
+						end
 
 						local cat = nil
 						if itemSubClassId == ItemSubClasses.FoodAndDrink then
@@ -521,7 +593,7 @@ function Buffet:ParseTexts(texts, itemSubClassId)
 						if value then
 							isPct = true
 							value = value:gsub(ThousandSeparator,"")
-							health = (tonumber(value) / 100) * myhealth;
+							health = (tonumber(value) / 100) -- * myhealth;
 						else
 							value = text:match(Patterns.FlatHealth);
 							if value then
@@ -550,7 +622,7 @@ function Buffet:ParseTexts(texts, itemSubClassId)
 					if value then
 						isPct = true
 						value = value:gsub(ThousandSeparator,"")
-						mana = (tonumber(value) / 100) * mymana;
+						mana = (tonumber(value) / 100) -- * mymana;
 					else
 						value = text:match(Patterns.FlatMana, offsetMana);
 						if value then
@@ -565,7 +637,7 @@ function Buffet:ParseTexts(texts, itemSubClassId)
 						if value then
 							isPct = true
 							value = value:gsub(ThousandSeparator,"")
-							mana = (tonumber(value) / 100) * mymana;
+							mana = (tonumber(value) / 100) -- * mymana;
 						else
 							value = text:match(Patterns.FlatMana);
 							if value then
