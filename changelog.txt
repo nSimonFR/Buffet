@@ -1,5 +1,6 @@
 ### 8.1.5.51-Beta
 
+* Even more improvements!
 * Item cache is now saved to disk (per account) reducing the time spent in tooltip and bags scanning
 * New slash commands
 

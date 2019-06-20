@@ -13,7 +13,7 @@ local buffetTooltipFromTemplate = nil
 local lastScan = 0
 local nextScan = 0
 local lastScanDelay = 5
-local nextScanDelay = 1
+local nextScanDelay = 2
 local tooltipCache = {}
 local scanAttempt = {}
 local itemCache = {}
@@ -77,6 +77,7 @@ function Buffet:SlashHandler(message, editbox)
 	elseif cmd == "clear" then
 		tooltipCache = {}
 		itemCache = {}
+		self:Print("Caches cleared!")
 	elseif cmd == "scan" then
 		self:Print("Scanning bags...")
 		self:ScanDynamic(true)
@@ -275,7 +276,7 @@ function Buffet:MakeTooltip()
 	return tooltip
 end
 
-function Buffet:ScanTooltip(itemlink, itemId)
+function Buffet:ScanTooltip(itemLink, itemId)
 	local t = self:MyGetTime()
 	local cached = false
 	local failedAttempt = false
@@ -290,7 +291,7 @@ function Buffet:ScanTooltip(itemlink, itemId)
 	local tooltip = buffetTooltipFromTemplate or self:MakeTooltip()
 	tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
 	tooltip:ClearLines()
-	tooltip:SetHyperlink(itemlink)
+	tooltip:SetHyperlink(itemLink)
 
 	local isConjuredItem = false
 
@@ -317,7 +318,7 @@ function Buffet:ScanTooltip(itemlink, itemId)
 	end
 	--]]
 
-	-- some time the tooltip is not properly generated on the first pass, all items should have at least 3 lines, 4 for conjured items
+	-- sometimes tooltips are not properly generated on first pass, all interesting items should have at least 3 lines, 4 for conjured items
 	local neededLines = 3
 	if isConjuredItem then
 		neededLines = 4
@@ -400,114 +401,130 @@ function Buffet:ScanDynamic(force)
 
 	local delayedScanRequired = false
 
+	local itemIds = {}
+
+	-- scan bags and build unique list of item ids
 	for bag=0,4 do
 		for slot=1,GetContainerNumSlots(bag) do
-			local _, itemCount, _, _, _, _, _, _, _, itemId = GetContainerItemInfo(bag,slot)
-			if itemId then -- slot not empty
-				local itemName, itemLink, _, _, itemMinLevel, _, _, _, _, _, _, itemClassId, itemSubClassId = GetItemInfo(itemId)
+			local _, _, _, _, _, _, _, _, _, itemId = GetContainerItemInfo(bag,slot)
+			-- slot not empty
+			if itemId then
+				if not itemIds[itemId] then
+					-- get total count for this item id
+					itemIds[itemId] = GetItemCount(itemId)
+				end
+			end
+		end
+	end
 
-				-- ensure itemMinLevel is not nil
-				itemMinLevel = itemMinLevel or 0
+	-- for each item id
+	for k,v in pairs(itemIds) do
+		local itemId, itemCount = k, v
 
-				if itemLink and (itemMinLevel <= mylevel) and self:IsValidItemClass(itemClassId) and self:IsValidItemSubClass(itemSubClassId) then
-					-- self:Debug("Debug:", itemName, itemClassId, itemSubClassId)
+		-- get item info
+		local itemName, itemLink, _, _, itemMinLevel, _, _, _, _, _, _, itemClassId, itemSubClassId = GetItemInfo(itemId)
 
-					local isHealth = false
-					local isMana = false
-					local isConjured = false
-					local isWellFed = false
-					local isPct = false
+		-- ensure itemMinLevel is not nil
+		itemMinLevel = itemMinLevel or 0
 
-					local health = 0;
-					local mana = 0;
+		-- treat only interesting items
+		if itemLink and (itemMinLevel <= mylevel) and self:IsValidItemClass(itemClassId) and self:IsValidItemSubClass(itemSubClassId) then
+			-- self:Debug("Debug:", itemName, itemClassId, itemSubClassId)
 
-					if itemCache[itemId] then
-						--self:Debug("Use item cache for:", itemName)
-						isHealth = itemCache[itemId].isHealth
-						isMana = itemCache[itemId].isMana
-						isConjured = itemCache[itemId].isConjured
-						isWellFed = itemCache[itemId].isWellFed
-						isPct = itemCache[itemId].isPct
-						health = itemCache[itemId].health
-						mana = itemCache[itemId].mana
-					else
-						--self:Debug("Live parsing for:", itemName)
-						-- parse tooltip values
-						local texts, cached, failedAttempt = self:ScanTooltip(itemLink, itemId)
-						if failedAttempt then
-							delayedScanRequired = true
-						end
-						isHealth, isMana, isConjured, isWellFed, health, mana, isPct = self:ParseTexts(texts, itemSubClassId)
-						-- cache item only if tooltip was cached
-						if cached then
-							itemCache[itemId] = {}
-							itemCache[itemId].isHealth = isHealth
-							itemCache[itemId].isMana = isMana
-							itemCache[itemId].isConjured = isConjured
-							itemCache[itemId].isWellFed = isWellFed
-							itemCache[itemId].isPct = isPct
-							itemCache[itemId].health = health
-							itemCache[itemId].mana = mana
-						end
+			local isHealth = false
+			local isMana = false
+			local isConjured = false
+			local isWellFed = false
+			local isPct = false
+
+			local health = 0;
+			local mana = 0;
+
+			if itemCache[itemId] then
+				--self:Debug("Use item cache for:", itemName)
+				isHealth = itemCache[itemId].isHealth
+				isMana = itemCache[itemId].isMana
+				isConjured = itemCache[itemId].isConjured
+				isWellFed = itemCache[itemId].isWellFed
+				isPct = itemCache[itemId].isPct
+				health = itemCache[itemId].health
+				mana = itemCache[itemId].mana
+			else
+				--self:Debug("Live parsing for:", itemName)
+				-- parse tooltip values
+				local texts, cached, failedAttempt = self:ScanTooltip(itemLink, itemId)
+				if failedAttempt then
+					delayedScanRequired = true
+				end
+				isHealth, isMana, isConjured, isWellFed, health, mana, isPct = self:ParseTexts(texts, itemSubClassId)
+				-- cache item only if tooltip was cached
+				if cached then
+					itemCache[itemId] = {}
+					itemCache[itemId].isHealth = isHealth
+					itemCache[itemId].isMana = isMana
+					itemCache[itemId].isConjured = isConjured
+					itemCache[itemId].isWellFed = isWellFed
+					itemCache[itemId].isPct = isPct
+					itemCache[itemId].health = health
+					itemCache[itemId].mana = mana
+				end
+			end
+
+			-- set found values to best
+			if not isWellFed and ( (health and (health > 0)) or (mana and (mana > 0)) ) then
+				--self:Debug("Found item: ", itemName, "isHealth: ", isHealth, "isMana: ", isMana, "health: ", health, "mana: ", mana, "isPct: ", isPct)
+
+				-- update pct values
+				if isPct then
+					if (health and (health > 0)) then
+						health = health * myhealth
 					end
+					if (mana and (mana > 0)) then
+						mana = mana * mymana
+					end
+				end
 
-					-- set found values to best
-					if not isWellFed and ( (health and (health > 0)) or (mana and (mana > 0)) ) then
-						--self:Debug("Found item: ", itemName, "isHealth: ", isHealth, "isMana: ", isMana, "health: ", health, "mana: ", mana, "isPct: ", isPct)
-
-						-- update pct values
-						if isPct then
-							if (health and (health > 0)) then
-								health = health * myhealth
-							end
-							if (mana and (mana > 0)) then
-								mana = mana * mymana
-							end
+				local cat = nil
+				if itemSubClassId == ItemSubClasses.FoodAndDrink then
+					if isHealth then
+						if isConjured then
+							cat = ns.categories.percfood
+						else
+							cat = ns.categories.food
 						end
-
-						local cat = nil
-						if itemSubClassId == ItemSubClasses.FoodAndDrink then
-							if isHealth then
-								if isConjured then
-									cat = ns.categories.percfood
-								else
-									cat = ns.categories.food
-								end
-								self:SetBest(cat, itemId, health, itemCount)
-							end
-							if isMana then
-								if isConjured then
-									cat = ns.categories.percwater
-								else
-									cat = ns.categories.water
-								end
-								self:SetBest(cat, itemId, mana, itemCount)
-							end
-						elseif itemSubClassId == ItemSubClasses.Potion then
-							if isHealth then
-								cat = ns.categories.hppot
-								self:SetBest(cat, itemId, health, itemCount)
-							end
-							if isMana then
-								cat = ns.categories.mppot
-								self:SetBest(cat, itemId, mana, itemCount)
-							end
-						elseif itemSubClassId == ItemSubClasses.Bandage then
-							if isHealth then
-								cat = ns.categories.bandage
-								self:SetBest(cat, itemId, health, itemCount)
-							end
-						elseif itemSubClassId == ItemSubClasses.Other then -- health stone / mana gem
-							if isConjured then
-								if isHealth then
-									cat = ns.categories.healthstone
-									self:SetBest(cat, itemId, health, itemCount)
-								end
-								if isMana then
-									cat = ns.categories.manastone
-									self:SetBest(cat, itemId, health, itemCount)
-								end
-							end
+						self:SetBest(cat, itemId, health, itemCount)
+					end
+					if isMana then
+						if isConjured then
+							cat = ns.categories.percwater
+						else
+							cat = ns.categories.water
+						end
+						self:SetBest(cat, itemId, mana, itemCount)
+					end
+				elseif itemSubClassId == ItemSubClasses.Potion then
+					if isHealth then
+						cat = ns.categories.hppot
+						self:SetBest(cat, itemId, health, itemCount)
+					end
+					if isMana then
+						cat = ns.categories.mppot
+						self:SetBest(cat, itemId, mana, itemCount)
+					end
+				elseif itemSubClassId == ItemSubClasses.Bandage then
+					if isHealth then
+						cat = ns.categories.bandage
+						self:SetBest(cat, itemId, health, itemCount)
+					end
+				elseif itemSubClassId == ItemSubClasses.Other then -- health stone / mana gem
+					if isConjured then
+						if isHealth then
+							cat = ns.categories.healthstone
+							self:SetBest(cat, itemId, health, itemCount)
+						end
+						if isMana then
+							cat = ns.categories.manastone
+							self:SetBest(cat, itemId, health, itemCount)
 						end
 					end
 				end
