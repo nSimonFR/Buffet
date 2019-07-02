@@ -28,7 +28,7 @@ ns.categories.food = "food"
 ns.categories.percfood = "percfood"
 ns.categories.percwater = "percwater"
 
-for k,v in pairs(ns.categories) do
-	ns.bests[v] = {val = -1, stack = -1, id = nil}
+for k, v in pairs(ns.categories) do
+    ns.bests[v] = { val = -1, stack = -1, id = nil }
 end
 

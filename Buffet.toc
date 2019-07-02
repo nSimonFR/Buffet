@@ -1,4 +1,4 @@
-## Interface: 80100
+## Interface: 80200
 ## Title: Buffet
 ## Notes: Food/water macro generator
 ## Author: Tekkub Stoutwrithe, Leliel at EU-Eldre'Thalas
@@ -16,6 +16,7 @@ tekKonfigHeading.lua
 tekKonfigButton.lua
 CallbackHandler-1.0.lua
 LibDataBroker-1.1\LibDataBroker-1.1.lua
+LibBabble-SubZone-3.0\lib.xml
 
 
 Const.lua

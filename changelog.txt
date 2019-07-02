@@ -1,3 +1,11 @@
+### 8.2.0.52-Beta
+
+* Improved consecutive scan request logic
+* Add (some) zone restricted items
+* New slash commands
+* Code reformatted and cleaned up
+
+
 ### 8.1.5.51-Beta
 
 * Even more improvements!
