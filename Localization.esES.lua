@@ -12,7 +12,7 @@ if GetLocale() == "esES" then
     KeyWords.ConjuredItem = "Objeto mágico"
     KeyWords.Health = "salud"
     KeyWords.Damage = "daño"
-    KeyWords.Mana = "man"
+    KeyWords.Mana = "maná"
     KeyWords.WellFed = "bien alimentado"
     KeyWords.OverTime = "por segundo durante"
 
