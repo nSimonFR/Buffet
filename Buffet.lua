@@ -38,7 +38,7 @@ function Buffet:Print(...)
     ChatFrame1:AddMessage(string.join(" ", "|cFF33FF99Buffet|r:", ...))
 end
 function Buffet:Debug(...)
-    -- [[
+    --[[
     local arg = {...}
     local t = ""
     for i,v in ipairs(arg) do
