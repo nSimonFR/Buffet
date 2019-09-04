@@ -22,4 +22,24 @@ if GetLocale() == "frFR" then
     Patterns.PctHealth = "([%d%.]+)%%.-vie"
     Patterns.PctMana = "([%d%.]+)%%.-mana"
     Patterns.OverTime = "pendant (%d+) s%."
+
+
+    -- Classic stuff
+    Classic_KeyWords.Bandage = "secourisme"
+
+    Classic_Patterns.Bandage = "rend ([%d%.]+) points de vie en ([%d%.]+) sec"
+
+    Classic_Patterns.Food = "rend ([%d%.]+) points de vie en ([%d%.]+) sec"
+    Classic_Patterns.Drink = "rend ([%d%.]+) points de mana en ([%d%.]+) sec"
+
+    Classic_Patterns.HealthPotion = "([%d%.]+) à ([%d%.]+) points de vie"
+    Classic_Patterns.ManaPotion = "([%d%.]+) à ([%d%.]+) points de mana"
+
+    --ItemType.Consumable = "Consommable"
+    --
+    --ItemSubType.Bandage = "Bandage"
+    --ItemSubType.Consumable = "Consommable"
+    --ItemSubType.FoodAndDrink = "Nourriture et boissons"
+    --ItemSubType.Other = "Autre"
+    --ItemSubType.Potion = "Potion"
 end

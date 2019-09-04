@@ -22,4 +22,12 @@ if GetLocale() == "itIT" then
     Patterns.PctHealth = "([%d%.]+)%%.-salute"
     Patterns.PctMana = "([%d%.]+)%%.-mana"
     Patterns.OverTime = "per (%d+) sec"
+
+    --ItemType.Consumable = "Consumabili"
+    --
+    --ItemSubType.Bandage = "Benda"
+    --ItemSubType.Consumable = "Consumabili"
+    --ItemSubType.FoodAndDrink = "Cibo e bevande"
+    --ItemSubType.Other = "Altro"
+    --ItemSubType.Potion = "Pozione"
 end

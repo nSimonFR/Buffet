@@ -23,11 +23,22 @@ if GetLocale() == "deDE" then
     Patterns.PctMana = "([%d%.]+)%% mana"
     Patterns.OverTime = "von (%d+) sec"
 
-    ItemType.Consumable = "Verbrauchbares"
+    -- Classic stuff
+    Classic_KeyWords.Bandage = "erste hilfe"
 
-    ItemSubType.Bandage = "Verband"
-    ItemSubType.Consumable = "Verbrauchbares"
-    ItemSubType.FoodAndDrink = "Speis & Trank"
-    ItemSubType.Other = "Anderes"
-    ItemSubType.Potion = "Trank"
+    Classic_Patterns.Bandage = "heilt ([%d%.]+) sek%. lang ([%d%.]+) punkt%(e%) schaden"
+
+    Classic_Patterns.Food = " stellt im verlauf von ([%d%.]+) sek%. ([%d%.]+) punkt%(e%) gesundheit wieder her"
+    Classic_Patterns.Drink = "stellt im verlauf von ([%d%.]+) sek%. ([%d%.]+) punkt%(e%) mana wieder her"
+
+    Classic_Patterns.HealthPotion = "stellt ([%d%.]+) bis ([%d%.]+) punkt%(e%) gesundheit wieder her"
+    Classic_Patterns.ManaPotion = "stellt ([%d%.]+) bis ([%d%.]+) punkt%(e%) mana wieder her"
+
+    --ItemType.Consumable = "Verbrauchbares"
+    --
+    --ItemSubType.Bandage = "Verband"
+    --ItemSubType.Consumable = "Verbrauchbares"
+    --ItemSubType.FoodAndDrink = "Speis & Trank"
+    --ItemSubType.Other = "Anderes"
+    --ItemSubType.Potion = "Trank"
 end

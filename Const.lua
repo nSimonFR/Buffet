@@ -9,6 +9,14 @@ ItemSubClasses.Other = 8
 ItemSubClasses.Potion = 1
 
 
+Classic_ItemClasses = {}
+Classic_ItemClasses.Consumable = 0
+
+Classic_ItemSubClasses = {}
+Classic_ItemSubClasses.Bandage = 0
+Classic_ItemSubClasses.Consumables = 0
+Classic_ItemSubClasses.Potion = 0
+
 -- https://wow.gamepedia.com/MapID
 Restrictions = {
     [32902] = { -- Bottled Nethergon Energy
