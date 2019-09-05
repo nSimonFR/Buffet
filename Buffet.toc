@@ -1,5 +1,5 @@
 ## Interface: 80200
-## Title: Buffet
+## Title: Buffet, Self-Serve
 ## Notes: Food/water macro generator
 ## Author: Tekkub Stoutwrithe, Leliel at EU-Eldre'Thalas
 ## X-Icon: Interface\Icons\INV_Misc_Food_DimSum

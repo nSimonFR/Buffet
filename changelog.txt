@@ -1,3 +1,9 @@
+### 8.2.0.53-Beta
+
+* Add Classic support
+* Few fixes here and there
+
+
 ### 8.2.0.52-Beta
 
 * Improved consecutive scan request logic
