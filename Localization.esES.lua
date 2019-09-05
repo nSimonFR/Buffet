@@ -6,7 +6,7 @@
 if GetLocale() == "esES" then
     ThousandSeparator = "%."
 
-    KeyWords.Use = "Usar"
+    KeyWords.Use = "Uso"
     KeyWords.Restores = "Restaura"
     KeyWords.Heals = "Sana"
     KeyWords.ConjuredItem = "Objeto mágico"
@@ -24,6 +24,7 @@ if GetLocale() == "esES" then
     Patterns.OverTime = "durante (%d+) sec"
 
     -- Classic stuff
+    Classic_KeyWords.Use = "Usar"
     Classic_KeyWords.Bandage = "primeros auxilios"
 
     Classic_Patterns.Bandage = "cura ([%d%.]+) p%. de daño durante ([%d%.]+) s"

@@ -746,7 +746,14 @@ function Buffet:ParseTexts(texts, itemSubClassId)
         end
 
         -- Usable item
-        if self:StringContains(text, KeyWords.Use:lower()) then
+        local usable = false
+        if IsClassic and  Classic_KeyWords.Use then
+            usable = self:StringContains(text, Classic_KeyWords.Use:lower())
+        else
+            usable = self:StringContains(text, KeyWords.Use:lower())
+        end
+
+        if usable then
             if IsClassic then
                  isHealth = isBandage or self:StringContains(text, KeyWords.Health:lower())
             else

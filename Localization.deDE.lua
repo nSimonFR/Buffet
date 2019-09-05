@@ -28,7 +28,7 @@ if GetLocale() == "deDE" then
 
     Classic_Patterns.Bandage = "heilt ([%d%.]+) sek%. lang ([%d%.]+) punkt%(e%) schaden"
 
-    Classic_Patterns.Food = " stellt im verlauf von ([%d%.]+) sek%. ([%d%.]+) punkt%(e%) gesundheit wieder her"
+    Classic_Patterns.Food = "stellt im verlauf von ([%d%.]+) sek%. ([%d%.]+) punkt%(e%) gesundheit wieder her"
     Classic_Patterns.Drink = "stellt im verlauf von ([%d%.]+) sek%. ([%d%.]+) punkt%(e%) mana wieder her"
 
     Classic_Patterns.HealthPotion = "stellt ([%d%.]+) bis ([%d%.]+) punkt%(e%) gesundheit wieder her"
