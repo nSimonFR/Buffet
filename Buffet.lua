@@ -786,6 +786,7 @@ function Buffet:ParseTexts(texts, itemSubClassId)
                             -- check for potion
                             v1, v2 = text:match(Classic_Patterns.HealthPotion)
                             if v1 and v2 then
+                                isPotion = true
                                 v1 = v1:gsub(ThousandSeparator, "")
                                 v2 = v2:gsub(ThousandSeparator, "")
                                 value = (tonumber(v1) + tonumber(v2)) / 2
@@ -847,6 +848,7 @@ function Buffet:ParseTexts(texts, itemSubClassId)
                         -- check for potion
                         v1, v2 = text:match(Classic_Patterns.ManaPotion)
                         if v1 and v2 then
+                            isPotion = true
                             v1 = v1:gsub(ThousandSeparator, "")
                             v2 = v2:gsub(ThousandSeparator, "")
                             value = (tonumber(v1) + tonumber(v2)) / 2
