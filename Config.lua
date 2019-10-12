@@ -19,7 +19,7 @@ frame:SetScript("OnShow", function()
 		elseif GetNumMacros() >= MAX_ACCOUNT_MACROS then Buffet:Print("All global macros in use.")
 		else
 			local id = CreateMacro(self.name, "INV_MISC_QUESTIONMARK", "")
-			Buffet:Scan()
+			Buffet:ScanDynamic()
 			PickupMacro(id)
 		end
 	end
