@@ -4,7 +4,8 @@
     - Patterns
 --]]
 if GetLocale() == "frFR" then
-    ThousandSeparator = ""
+    -- ThousandSeparator = {" ", " "} -- " "
+    ThousandSeparator = " "
 
     KeyWords.Use = "Utiliser"
     KeyWords.Restores = "Rend"
@@ -16,13 +17,12 @@ if GetLocale() == "frFR" then
     KeyWords.WellFed = "bien nourri"
     KeyWords.OverTime = "par second pendant"
 
-    Patterns.FlatHealth = "([%d%.]+).-vie" -- il peut y avoir du text entre la valeur numéric et le mot "vie"
-    Patterns.FlatDamage = "([%d%.]+).-vie"
-    Patterns.FlatMana = "([%d%.]+).-mana"
+    Patterns.FlatHealth = "([%d%s%.]+) .-vie" -- il peut y avoir du text entre la valeur numéric et le mot "vie"
+    Patterns.FlatDamage = "([%d%s%.]+) .-vie"
+    Patterns.FlatMana = "([%d%s%.]+) .-mana"
     Patterns.PctHealth = "([%d%.]+)%%.-vie"
     Patterns.PctMana = "([%d%.]+)%%.-mana"
     Patterns.OverTime = "pendant (%d+) s%."
-
 
     -- Classic stuff
     Classic_KeyWords.Bandage = "secourisme"

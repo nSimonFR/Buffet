@@ -138,7 +138,7 @@ function Buffet:SlashHandler(message, editbox)
     elseif cmd == "debug" then
         local itemString = args or nil
         if itemString then
-            local _, itemLink, _, itemLevel = GetItemInfo(itemString)
+            local _, itemLink, _, itemLevel, _, _, _, _, _, _, _, itemClassId, itemSubClassId = GetItemInfo(itemString)
             if itemLink then
                 local itemId = string.match(itemLink, "item:([%d]+)")
                 if itemId then
@@ -150,7 +150,7 @@ function Buffet:SlashHandler(message, editbox)
                         return
                     end
 
-                    local isHealth, isMana, isConjured, isWellFed, health, mana, isPct, isPotion, isBandage = self:ParseTexts(texts, itemSubClassId)
+                    local isHealth, isMana, isConjured, isWellFed, health, mana, isPct, isPotion, isBandage = self:ParseTexts(texts, itemClassId, itemSubClassId)
 
                     self:Print("Item " .. itemString .. ":")
                     self:Print("- Is health: " .. self:BoolToStr(isHealth))
@@ -536,7 +536,7 @@ function Buffet:ScanDynamic(force)
 
         -- get item info
         local itemName, itemLink, _, itemLevel, itemMinLevel, _, _, _, _, _, _, itemClassId, itemSubClassId = GetItemInfo(itemId)
-        self:Debug("Debug:", itemId, itemName, itemClassId, itemSubClassId)
+        -- self:Debug("Debug:", itemId, itemName, itemClassId, itemSubClassId)
 
         -- ensure itemMinLevel is not nil
         itemMinLevel = itemMinLevel or 0
@@ -574,7 +574,7 @@ function Buffet:ScanDynamic(force)
                 if failedAttempt then
                     delayedScanRequired = true
                 end
-                isHealth, isMana, isConjured, isWellFed, health, mana, isPct, isPotion, isBandage = self:ParseTexts(texts, itemSubClassId)
+                isHealth, isMana, isConjured, isWellFed, health, mana, isPct, isPotion, isBandage = self:ParseTexts(texts, itemClassId, itemSubClassId)
 
                 --self:Debug("Found item: ", itemName, "isHealth: ", isHealth, "isMana: ", isMana, "health: ", health, "mana: ", mana)
                 --self:Debug("isConjured: ", isConjured, "isPotion: ", isPotion, "isBandage: ", isBandage)
@@ -626,6 +626,7 @@ function Buffet:ScanDynamic(force)
                 local fnd = false
                 local pot = false
                 local bdg = false
+                local oth = false
 
                 if IsClassic then
                     fnd = not isPotion and not isBandage
@@ -708,7 +709,24 @@ function Buffet:ScanDynamic(force)
     self:StatsTimerUpdate("ScanDynamic", currentTime)
 end
 
-function Buffet:ParseTexts(texts, itemSubClassId)
+function Buffet:StripThousandSeparator(text)
+    if type(ThousandSeparator) == "string" then
+        return text:gsub(ThousandSeparator, "")
+    elseif type(ThousandSeparator) == "table" then
+        for i, v in ipairs(ThousandSeparator) do
+            text = text:gsub(v, "")
+        end
+        return text
+    end
+end
+
+function Buffet:ReplaceFakeSpace(text)
+    local t = ""
+    t = text:gsub(" ", " ") -- WTF Blizzard !
+    return t
+end
+
+function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
     local t = self:MyGetTime()
 
     local isBandage = false
@@ -734,6 +752,8 @@ function Buffet:ParseTexts(texts, itemSubClassId)
 
         -- Bandage for classic
         if IsClassic and self:StringContains(text, Classic_KeyWords.Bandage:lower()) then
+            isBandage = true
+        elseif not IsClassic and itemClassId == ItemClasses.Consumable and itemSubClassId == ItemSubClasses.Bandage then
             isBandage = true
         end
 
@@ -767,6 +787,11 @@ function Buffet:ParseTexts(texts, itemSubClassId)
             end
             isMana = self:StringContains(text, KeyWords.Mana:lower())
 
+            if isHealth or isMana then
+                -- FU Blizzard
+                text = self:ReplaceFakeSpace(text)
+            end
+
             if isHealth then
                 if IsClassic then
                     local value, v1, v2 = nil, nil, nil
@@ -789,15 +814,18 @@ function Buffet:ParseTexts(texts, itemSubClassId)
                             v1, v2 = text:match(Classic_Patterns.HealthPotion)
                             if v1 and v2 then
                                 isPotion = true
-                                v1 = v1:gsub(ThousandSeparator, "")
-                                v2 = v2:gsub(ThousandSeparator, "")
+                                --v1 = v1:gsub(ThousandSeparator, "")
+                                --v2 = v2:gsub(ThousandSeparator, "")
+                                v1 = self:StripThousandSeparator(v1)
+                                v2 = self:StripThousandSeparator(v2)
                                 value = (tonumber(v1) + tonumber(v2)) / 2
                             end
                         end
                     end
                     if value then
                         if type(value) ~= "number" then
-                            value = value:gsub(ThousandSeparator, "")
+                            --value = value:gsub(ThousandSeparator, "")
+                            value = self:StripThousandSeparator(value)
                             health = tonumber(value)
                         else
                             health = value
@@ -808,7 +836,7 @@ function Buffet:ParseTexts(texts, itemSubClassId)
                         if self:StringContains(text, KeyWords.Heals:lower()) then
                             local value = text:match(Patterns.FlatDamage);
                             if value then
-                                value = value:gsub(ThousandSeparator, "")
+                                value = self:StripThousandSeparator(value)
                                 health = tonumber(value)
                             end
                         end
@@ -817,12 +845,12 @@ function Buffet:ParseTexts(texts, itemSubClassId)
                             local value = text:match(Patterns.PctHealth);
                             if value then
                                 isPct = true
-                                value = value:gsub(ThousandSeparator, "")
+                                value = self:StripThousandSeparator(value)
                                 health = (tonumber(value) / 100) -- * myhealth;
                             else
                                 value = text:match(Patterns.FlatHealth);
                                 if value then
-                                    value = value:gsub(ThousandSeparator, "")
+                                    value = self:StripThousandSeparator(value)
                                     health = tonumber(value)
                                 end
                             end
@@ -851,14 +879,16 @@ function Buffet:ParseTexts(texts, itemSubClassId)
                         v1, v2 = text:match(Classic_Patterns.ManaPotion)
                         if v1 and v2 then
                             isPotion = true
-                            v1 = v1:gsub(ThousandSeparator, "")
-                            v2 = v2:gsub(ThousandSeparator, "")
+                            --v1 = v1:gsub(ThousandSeparator, "")
+                            --v2 = v2:gsub(ThousandSeparator, "")
+                            v1 = self:StripThousandSeparator(v1)
+                            v2 = self:StripThousandSeparator(v2)
                             value = (tonumber(v1) + tonumber(v2)) / 2
                         end
                     end
                     if value then
                         if type(value) ~= "number" then
-                            value = value:gsub(ThousandSeparator, "")
+                            value = self:StripThousandSeparator(value)
                             mana = tonumber(value)
                         else
                             mana = value
@@ -871,30 +901,30 @@ function Buffet:ParseTexts(texts, itemSubClassId)
                             offsetMana = text:find(KeyWords.Health)
                         end
 
-                        local value = text:match(Patterns.PctMana, offsetMana);
+                        local value = text:match(Patterns.PctMana, offsetMana)
                         if value then
                             isPct = true
-                            value = value:gsub(ThousandSeparator, "")
+                            value = self:StripThousandSeparator(value)
                             mana = (tonumber(value) / 100) -- * mymana;
                         else
                             value = text:match(Patterns.FlatMana, offsetMana);
                             if value then
-                                value = value:gsub(ThousandSeparator, "")
+                                value = self:StripThousandSeparator(value)
                                 mana = tonumber(value)
                             end
                         end
 
                         -- in some cases there is only one value for health and mana, so we need to try without the offsetMana
                         if not value then
-                            local value = text:match(Patterns.PctMana);
+                            value = text:match(Patterns.PctMana);
                             if value then
                                 isPct = true
-                                value = value:gsub(ThousandSeparator, "")
+                                value = self:StripThousandSeparator(value)
                                 mana = (tonumber(value) / 100) -- * mymana;
                             else
                                 value = text:match(Patterns.FlatMana);
                                 if value then
-                                    value = value:gsub(ThousandSeparator, "")
+                                    value = self:StripThousandSeparator(value)
                                     mana = tonumber(value)
                                 end
                             end
