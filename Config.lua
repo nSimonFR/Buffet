@@ -19,7 +19,7 @@ frame:SetScript("OnShow", function()
 		elseif GetNumMacros() >= MAX_ACCOUNT_MACROS then Buffet:Print("All global macros in use.")
 		else
 			local id = CreateMacro(self.name, "INV_MISC_QUESTIONMARK", "")
-			Buffet:Scan()
+			Buffet:ScanDynamic(true)
 			PickupMacro(id)
 		end
 	end
@@ -65,7 +65,7 @@ frame:SetScript("OnShow", function()
 			Buffet:Print('Macro text must contain the string "%MACRO%".')
 		else
 			Buffet.db.macroHP = newmacro
-			Buffet:BAG_UPDATE()
+			Buffet:BAG_UPDATE_DELAYED()
 		end
 	end)
 	hpeditbox:SetScript("OnEscapePressed", hpeditbox.ClearFocus)
@@ -95,7 +95,7 @@ frame:SetScript("OnShow", function()
 			Buffet:Print('Macro text must contain the string "%MACRO%".')
 		else
 			Buffet.db.macroMP = newmacro
-			Buffet:BAG_UPDATE()
+			Buffet:BAG_UPDATE_DELAYED()
 		end
 	end)
 	mpeditbox:SetScript("OnEscapePressed", mpeditbox.ClearFocus)

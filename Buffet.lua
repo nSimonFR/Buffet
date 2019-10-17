@@ -2,7 +2,8 @@
 --      Locals      --
 ----------------------
 
-local myname, ns = ...
+local addonName, ns = ...
+Buffet_Version = GetAddOnMetadata(addonName, 'Version');
 
 local defaults = { macroHP = "#showtooltip\n%MACRO%", macroMP = "#showtooltip\n%MACRO%" }
 local firstRun = true
@@ -117,6 +118,8 @@ function Buffet:SlashHandler(message, editbox)
                         self:Print("- Is well fed: " .. self:BoolToStr(data.isWellFed))
                         self:Print("- Is conjured: " .. self:BoolToStr(data.isConjured))
                         self:Print("- Is percent: " .. self:BoolToStr(data.isPct))
+                        self:Print("- Is potion: " .. self:BoolToStr(data.isPotion))
+                        self:Print("- Is bandage: " .. self:BoolToStr(data.isBandage))
                         if data.isPct then
                             self:Print(string.format("- health value: %d", data.health * 100))
                             self:Print(string.format("- mana value: %d", data.mana * 100))
@@ -176,6 +179,7 @@ function Buffet:SlashHandler(message, editbox)
         self:Print("/buffet info <itemLink>: display info about <itemLink> (if item is in cache)")
         self:Print("/buffet scan: perform a manual scan of your bags")
         self:Print("/buffet stats: show some internal statistics")
+        self:Print("/buffet debug <itemLink>: scan and  display info about <itemLink> (bypass cache)")
     end
 end
 SLASH_BUFFET1 = "/buffet"
@@ -194,10 +198,10 @@ function Buffet:ADDON_LOADED(event, addon)
     self.db = BuffetDB
 
     local _, build = GetBuildInfo()
-    local currBuild, prevBuild = tonumber(build), BuffetItemDB.build
+    local currBuild, prevBuild, buffetVersion = tonumber(build), BuffetItemDB.build, BuffetItemDB.version
 
-    -- load items cache only if we are running the same build
-    if prevBuild and (prevBuild == currBuild) then
+    -- load items cache only if we are running the same build (client and addon)
+    if prevBuild and (prevBuild == currBuild) and buffetVersion and (buffetVersion == Buffet_Version) then
         itemCache = BuffetItemDB.itemCache or {}
     end
 
@@ -212,6 +216,7 @@ function Buffet:ADDON_LOADED(event, addon)
     BuffetItemDB.itemCache = itemCache
     BuffetItemDB.build = currBuild
     BuffetItemDB.nextScanDelay = nextScanDelay
+    BuffetItemDB.version = Buffet_Version
 
     self:UnregisterEvent("ADDON_LOADED")
     self.ADDON_LOADED = nil
@@ -247,7 +252,10 @@ function Buffet:PLAYER_LOGIN()
     self:RegisterEvent("BAG_UPDATE_DELAYED")
     self:RegisterEvent("UNIT_MAXHEALTH")
     self:RegisterEvent("UNIT_MAXPOWER")
-    self:RegisterEvent("ZONE_CHANGED")
+
+    if not IsClassic then
+        self:RegisterEvent("ZONE_CHANGED")
+    end
 
     self:UnregisterEvent("PLAYER_LOGIN")
     self.PLAYER_LOGIN = nil
@@ -494,12 +502,6 @@ end
 function Buffet:ScanDynamic(force)
     force = force or false
     local currentTime = self:MyGetTime()
-    --[[ avoid scanning bag too often, ie. on multiple consecutive bag update
-    if not force and (lastScan + lastScanDelay > currentTime) then
-        return
-    end
-    lastScan = currentTime
-    --]]
 
     self:Debug("Scanning bags...")
 
@@ -534,7 +536,7 @@ function Buffet:ScanDynamic(force)
 
         -- get item info
         local itemName, itemLink, _, itemLevel, itemMinLevel, _, _, _, _, _, _, itemClassId, itemSubClassId = GetItemInfo(itemId)
-        --self:Debug("Debug:", itemId, itemName, itemClassId, itemSubClassId)
+        self:Debug("Debug:", itemId, itemName, itemClassId, itemSubClassId)
 
         -- ensure itemMinLevel is not nil
         itemMinLevel = itemMinLevel or 0
