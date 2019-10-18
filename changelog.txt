@@ -1,3 +1,10 @@
+### 8.2.5.54-Beta
+
+* Fix potion for classic
+* Fix FR localization for retail
+* Various other fixes and improvements
+
+
 ### 8.2.0.53-Beta
 
 * Add Classic support
