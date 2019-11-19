@@ -179,7 +179,7 @@ function Buffet:SlashHandler(message, editbox)
         self:Print("/buffet info <itemLink>: display info about <itemLink> (if item is in cache)")
         self:Print("/buffet scan: perform a manual scan of your bags")
         self:Print("/buffet stats: show some internal statistics")
-        self:Print("/buffet debug <itemLink>: scan and  display info about <itemLink> (bypass cache)")
+        self:Print("/buffet debug <itemLink>: scan and display info about <itemLink> (bypass caches)")
     end
 end
 SLASH_BUFFET1 = "/buffet"
