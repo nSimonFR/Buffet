@@ -15,3 +15,6 @@ Steps to reproduce the behavior if applicable:
 
 **Related Item**
 Please provide a WowHead link to the related item if applicable:
+
+**Language**
+Please specify the language of your wow client:
