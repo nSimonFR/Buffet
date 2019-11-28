@@ -71,9 +71,11 @@ function Buffet:SlashHandler(message, editbox)
             combat = tonumber(combat)
             self.db.combat = (combat == 1)
             self:ScanDynamic()
-            self:Print("combat set to: ", self:BoolToStr(self.db.combat))
+        end
+        if self.db.combat then
+            self:Print("combat mode: enable")
         else
-            self:Print("combat is: ", self:BoolToStr(self.db.combat))
+            self:Print("combat mode: disable")
         end
     elseif cmd == "stats" then
         self:Print("Session Statistics:")
