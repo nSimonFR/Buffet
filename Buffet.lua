@@ -5,7 +5,7 @@
 local addonName, ns = ...
 Buffet_Version = GetAddOnMetadata(addonName, 'Version');
 
-local defaults = { macroHP = "#showtooltip\n%MACRO%", macroMP = "#showtooltip\n%MACRO%" }
+local defaults = { macroHP = "#showtooltip\n%MACRO%", macroMP = "#showtooltip\n%MACRO%", combat = true }
 local firstRun = true
 local dirty = false
 local bests = ns.bests
@@ -39,14 +39,16 @@ function Buffet:Print(...)
     ChatFrame1:AddMessage(string.join(" ", "|cFF33FF99Buffet|r:", ...))
 end
 function Buffet:Debug(...)
-    --[[
+    --@debug@
+    -- [[
     local arg = {...}
     local t = ""
-    for i,v in ipairs(arg) do
+    for i, v in ipairs(arg) do
         t = t .. " " .. tostring(v)
     end
-    ChatFrame1:AddMessage("|cFF33FF99Buffet|r:" .. t)
+    ChatFrame1:AddMessage("|cFF33BB99Buffet|r:" .. t)
     --]]
+    --@end-debug@
 end
 
 function Buffet:MyGetTime()
@@ -63,7 +65,17 @@ end
 function Buffet:SlashHandler(message, editbox)
     local _, _, cmd, args = string.find(message, "%s?(%w+)%s?(.*)")
 
-    if cmd == "stats" then
+    if cmd == "combat" then
+        local combat = args or nil
+        if combat ~= nil and combat ~= "" then
+            combat = tonumber(combat)
+            self.db.combat = (combat == 1)
+            self:ScanDynamic()
+            self:Print("combat set to: ", self:BoolToStr(self.db.combat))
+        else
+            self:Print("combat is: ", self:BoolToStr(self.db.combat))
+        end
+    elseif cmd == "stats" then
         self:Print("Session Statistics:")
         self:Print("- Functions called:")
         for k, v in pairs(stats.timers) do
@@ -85,9 +97,12 @@ function Buffet:SlashHandler(message, editbox)
         tooltipCache = {}
         itemCache = {}
         self:Print("Caches cleared!")
+        self:Print("Scanning bags...")
+        self:ScanDynamic()
+        self:Print("Done!")
     elseif cmd == "scan" then
         self:Print("Scanning bags...")
-        self:ScanDynamic(true)
+        self:ScanDynamic()
         self:Print("Done!")
     elseif cmd == "delay" then
         local delay = args or nil
@@ -174,6 +189,7 @@ function Buffet:SlashHandler(message, editbox)
         end
     else
         self:Print("Usage:")
+        self:Print("/buffet combat [0, 1]: 1 to enable, 0 to disable")
         self:Print("/buffet clear: clear all caches")
         self:Print("/buffet delay [<number>]: show or set next scan delay in seconds (default is 1.2)")
         self:Print("/buffet info <itemLink>: display info about <itemLink> (if item is in cache)")
@@ -191,22 +207,26 @@ function Buffet:ADDON_LOADED(event, addon)
     if addon:lower() ~= "buffet" then
         return
     end
+    self:UnregisterEvent("ADDON_LOADED")
 
     -- load saved variables
     BuffetItemDB = BuffetItemDB or {}
     BuffetDB = setmetatable(BuffetDB or {}, { __index = defaults })
     self.db = BuffetDB
 
-    local _, build = GetBuildInfo()
+    local _, build, _, interfaceVersion = GetBuildInfo()
     local currBuild, prevBuild, buffetVersion = tonumber(build), BuffetItemDB.build, BuffetItemDB.version
 
     -- load items cache only if we are running the same build (client and addon)
     if prevBuild and (prevBuild == currBuild) and buffetVersion and (buffetVersion == Buffet_Version) then
         itemCache = BuffetItemDB.itemCache or {}
+    else
+        self:Print("Cache has been cleared due to version update.")
     end
 
-    if UnitDefense and not UpdateWindow then
+    if interfaceVersion < 80000 then
         IsClassic = true
+        self:Debug("Classic mode enabled")
     end
 
     nextScanDelay = BuffetItemDB.nextScanDelay or nextScanDelay
@@ -218,11 +238,10 @@ function Buffet:ADDON_LOADED(event, addon)
     BuffetItemDB.nextScanDelay = nextScanDelay
     BuffetItemDB.version = Buffet_Version
 
-    self:UnregisterEvent("ADDON_LOADED")
-    self.ADDON_LOADED = nil
-
     stats.events = {}
     stats.timers = {}
+
+    self.ADDON_LOADED = nil
 
     if IsLoggedIn() then
         self:PLAYER_LOGIN()
@@ -232,6 +251,8 @@ function Buffet:ADDON_LOADED(event, addon)
 end
 
 function Buffet:PLAYER_LOGIN()
+    self:UnregisterEvent("PLAYER_LOGIN")
+
     stats.events["PLAYER_REGEN_ENABLED"] = 0
     stats.events["PLAYER_LEVEL_UP"] = 0
     stats.events["BAG_UPDATE_DELAYED"] = 0
@@ -257,14 +278,14 @@ function Buffet:PLAYER_LOGIN()
         self:RegisterEvent("ZONE_CHANGED")
     end
 
-    self:UnregisterEvent("PLAYER_LOGIN")
     self.PLAYER_LOGIN = nil
 
     mylevel = UnitLevel("player")
     myhealth = UnitHealthMax("player")
     mymana = UnitPowerMax("player")
 
-    dirty = true
+    self:EnableDelayedScan()
+    -- dirty = true
 end
 
 function Buffet:PLAYER_LOGOUT()
@@ -339,7 +360,7 @@ function Buffet:UpdateCallback(...)
         if nextScan <= t then
             if not InCombatLockdown() then
                 self:DisableDelayedScan()
-                self:ScanDynamic(true)
+                self:ScanDynamic()
             end
         end
     end
@@ -422,6 +443,7 @@ function Buffet:ScanTooltip(itemLink, itemId, itemLevel)
     if isConjuredItem then
         neededLines = 4
     end
+    -- except low level item which can have only 2 lines..
     if itemLevel < 10 then
         neededLines = neededLines - 1
     end
@@ -458,12 +480,12 @@ function Buffet:IsValidItemClass(itemClassId)
             end
         end
     else
-        return itemClassId == ItemClasses.Consumable
+        return (itemClassId == ItemClasses.Consumable) or (itemClassId == ItemClasses.Miscellaneous)
     end
     return false
 end
 
-function Buffet:IsValidItemSubClass(itemSubClassId)
+function Buffet:IsValidItemSubClass(itemClassId, itemSubClassId)
     if IsClassic then
         for k, v in pairs(Classic_ItemSubClasses) do
             if itemSubClassId == v then
@@ -471,9 +493,17 @@ function Buffet:IsValidItemSubClass(itemSubClassId)
             end
         end
     else
-        for k, v in pairs(ItemSubClasses) do
-            if itemSubClassId == v then
-                return true
+        if itemClassId == ItemClasses.Consumable then
+            for k, v in pairs(ItemConsumableSubClasses) do
+                if itemSubClassId == v then
+                    return true
+                end
+            end
+        elseif itemClassId == ItemClasses.Miscellaneous then
+            for k, v in pairs(ItemMiscellaneousSubClasses) do
+                if itemSubClassId == v then
+                    return true
+                end
             end
         end
     end
@@ -499,8 +529,7 @@ function Buffet:SetBest(cat, id, value, stack)
     end
 end
 
-function Buffet:ScanDynamic(force)
-    force = force or false
+function Buffet:ScanDynamic()
     local currentTime = self:MyGetTime()
 
     self:Debug("Scanning bags...")
@@ -536,13 +565,13 @@ function Buffet:ScanDynamic(force)
 
         -- get item info
         local itemName, itemLink, _, itemLevel, itemMinLevel, _, _, _, _, _, _, itemClassId, itemSubClassId = GetItemInfo(itemId)
-        -- self:Debug("Debug:", itemId, itemName, itemClassId, itemSubClassId)
+        --self:Debug("Debug:", itemId, itemName, itemClassId, itemSubClassId)
 
         -- ensure itemMinLevel is not nil
         itemMinLevel = itemMinLevel or 0
 
         -- treat only interesting items
-        if itemLink and (itemMinLevel <= mylevel) and self:IsValidItemClass(itemClassId) and self:IsValidItemSubClass(itemSubClassId) then
+        if itemLink and (itemMinLevel <= mylevel) and self:IsValidItemClass(itemClassId) and self:IsValidItemSubClass(itemClassId, itemSubClassId) then
 
             local isHealth = false
             local isMana = false
@@ -553,11 +582,13 @@ function Buffet:ScanDynamic(force)
             local isBandage = false
             local isRestricted = false
 
-            local health = 0;
-            local mana = 0;
+            local health = 0
+            local mana = 0
 
+            local itemFoundInCache = false
+
+            -- check cache for item
             if itemCache[itemId] then
-                --self:Debug("Use item cache for:", itemName)
                 isHealth = itemCache[itemId].isHealth
                 isMana = itemCache[itemId].isMana
                 isConjured = itemCache[itemId].isConjured
@@ -567,8 +598,17 @@ function Buffet:ScanDynamic(force)
                 isBandage = itemCache[itemId].isBandage
                 health = itemCache[itemId].health
                 mana = itemCache[itemId].mana
-            else
-                --self:Debug("Live parsing for:", itemName)
+
+                local validHealth = not isHealth or (isHealth and (health and (health > 0)))
+                local validMana   = not isMana   or (isMana   and (mana   and (mana   > 0)))
+                itemFoundInCache = isWellFed or validHealth or validMana
+                if itemFoundInCache then
+                    -- self:Debug("cache found for: ", itemId, itemName)
+                end
+            end
+
+            -- if not found, scan and parse tooltip
+            if not itemFoundInCache then
                 -- parse tooltip values
                 local texts, cached, failedAttempt = self:ScanTooltip(itemLink, itemId, itemLevel)
                 if failedAttempt then
@@ -576,11 +616,12 @@ function Buffet:ScanDynamic(force)
                 end
                 isHealth, isMana, isConjured, isWellFed, health, mana, isPct, isPotion, isBandage = self:ParseTexts(texts, itemClassId, itemSubClassId)
 
-                --self:Debug("Found item: ", itemName, "isHealth: ", isHealth, "isMana: ", isMana, "health: ", health, "mana: ", mana)
-                --self:Debug("isConjured: ", isConjured, "isPotion: ", isPotion, "isBandage: ", isBandage)
+                local canCacheHealth = not isHealth or (isHealth and (health and (health > 0)))
+                local canCacheMana   = not isMana   or (isMana   and (mana   and (mana   > 0)))
 
-                -- cache item only if tooltip was cached
-                if cached then
+                if cached and (isWellFed or canCacheHealth or canCacheMana) then
+                    --self:Debug("cache set for: ", itemId, itemName)
+
                     itemCache[itemId] = {}
                     itemCache[itemId].isHealth = isHealth
                     itemCache[itemId].isMana = isMana
@@ -634,10 +675,17 @@ function Buffet:ScanDynamic(force)
                     bdg = isBandage
                     oth = isPotion and not isBandage
                 else
-                    fnd = itemSubClassId == ItemSubClasses.FoodAndDrink
-                    pot = itemSubClassId == ItemSubClasses.Potion
-                    bdg = itemSubClassId == ItemSubClasses.Bandage
-                    oth = itemSubClassId == ItemSubClasses.Other
+                    if itemClassId == ItemClasses.Consumable then
+                        fnd = itemSubClassId == ItemConsumableSubClasses.FoodAndDrink
+                        pot = itemSubClassId == ItemConsumableSubClasses.Potion
+                        bdg = itemSubClassId == ItemConsumableSubClasses.Bandage
+                        oth = itemSubClassId == ItemConsumableSubClasses.Other
+                    elseif itemClassId == ItemClasses.Miscellaneous then
+                        fnd = itemSubClassId == ItemMiscellaneousSubClasses.Reagent
+                        pot = false
+                        bdg = false
+                        oth = false
+                    end
                 end
 
                 if fnd then
@@ -753,7 +801,7 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
         -- Bandage for classic
         if IsClassic and self:StringContains(text, Classic_KeyWords.Bandage:lower()) then
             isBandage = true
-        elseif not IsClassic and itemClassId == ItemClasses.Consumable and itemSubClassId == ItemSubClasses.Bandage then
+        elseif not IsClassic and itemClassId == ItemClasses.Consumable and itemSubClassId == ItemConsumableSubClasses.Bandage then
             isBandage = true
         end
 
@@ -779,7 +827,7 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
             if IsClassic then
                  isHealth = isBandage or self:StringContains(text, KeyWords.Health:lower())
             else
-                if itemSubClassId == ItemSubClasses.Bandage then
+                if isBandage then
                     isHealth = self:StringContains(text, KeyWords.Damage:lower())
                 else
                     isHealth = self:StringContains(text, KeyWords.Health:lower())
@@ -814,8 +862,6 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                             v1, v2 = text:match(Classic_Patterns.HealthPotion)
                             if v1 and v2 then
                                 isPotion = true
-                                --v1 = v1:gsub(ThousandSeparator, "")
-                                --v2 = v2:gsub(ThousandSeparator, "")
                                 v1 = self:StripThousandSeparator(v1)
                                 v2 = self:StripThousandSeparator(v2)
                                 value = (tonumber(v1) + tonumber(v2)) / 2
@@ -824,7 +870,6 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                     end
                     if value then
                         if type(value) ~= "number" then
-                            --value = value:gsub(ThousandSeparator, "")
                             value = self:StripThousandSeparator(value)
                             health = tonumber(value)
                         else
@@ -832,7 +877,7 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                         end
                     end
                 else
-                    if itemSubClassId == ItemSubClasses.Bandage then
+                    if isBandage then
                         if self:StringContains(text, KeyWords.Heals:lower()) then
                             local value = text:match(Patterns.FlatDamage);
                             if value then
@@ -879,8 +924,6 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                         v1, v2 = text:match(Classic_Patterns.ManaPotion)
                         if v1 and v2 then
                             isPotion = true
-                            --v1 = v1:gsub(ThousandSeparator, "")
-                            --v2 = v2:gsub(ThousandSeparator, "")
                             v1 = self:StripThousandSeparator(v1)
                             v2 = self:StripThousandSeparator(v2)
                             value = (tonumber(v1) + tonumber(v2)) / 2
@@ -1010,7 +1053,7 @@ function Buffet:Edit(name, substring, food, pot, mod)
     if mod then
         body = body .. "[mod,target=player] item:" .. mod .. "; "
     end
-    if pot then
+    if self.db.combat and pot then
         body = body .. "[combat] item:" .. pot .. "; "
     end
     body = body .. "item:" .. (food or "6948")
