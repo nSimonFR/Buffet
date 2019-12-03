@@ -10,9 +10,7 @@ local firstRun = true
 local dirty = false
 local bests = ns.bests
 local buffetTooltipFromTemplate = nil
-local lastScan = 0
 local nextScan = 0
-local lastScanDelay = 5
 local nextScanDelay = 1.2
 local tooltipCache = {}
 local scanAttempt = {}
@@ -23,6 +21,13 @@ local IsClassic = false
 local mylevel = 0
 local myhealth = 0
 local mymana = 0
+
+
+-----------------------------
+--   localize functions    --
+-----------------------------
+local match = string.match
+
 
 -----------------------------
 --      Event Handler      --
@@ -44,7 +49,13 @@ function Buffet:Debug(...)
     local arg = {...}
     local t = ""
     for i, v in ipairs(arg) do
-        t = t .. " " .. tostring(v)
+        if type(v) == "table" then
+            for _, w in ipairs(v) do
+                t = t .. ", " .. tostring(w)
+            end
+        else
+            t = t .. " " .. tostring(v)
+        end
     end
     ChatFrame1:AddMessage("|cFF33BB99Buffet|r:" .. t)
     --]]
@@ -96,16 +107,15 @@ function Buffet:SlashHandler(message, editbox)
         self:Print(string.format("  - %d item(s) cached", self:TableCount(itemCache)))
         self:Print(string.format("  - %d tooltip(s) cached", self:TableCount(tooltipCache)))
     elseif cmd == "clear" then
+        scanAttempt = {}
         tooltipCache = {}
         itemCache = {}
         self:Print("Caches cleared!")
-        self:Print("Scanning bags...")
+        self:Print("Rescanning bags...")
         self:ScanDynamic()
-        self:Print("Done!")
     elseif cmd == "scan" then
         self:Print("Scanning bags...")
         self:ScanDynamic()
-        self:Print("Done!")
     elseif cmd == "delay" then
         local delay = args or nil
         if delay and delay ~= "" then
@@ -124,7 +134,7 @@ function Buffet:SlashHandler(message, editbox)
         if itemString then
             local _, itemLink = GetItemInfo(itemString)
             if itemLink then
-                local itemId = string.match(itemLink, "item:([%d]+)")
+                local itemId = match(itemLink, "item:([%d]+)")
                 if itemId then
                     itemId = tonumber(itemId)
                     if itemCache[itemId] then
@@ -157,12 +167,12 @@ function Buffet:SlashHandler(message, editbox)
         if itemString then
             local _, itemLink, _, itemLevel, _, _, _, _, _, _, _, itemClassId, itemSubClassId = GetItemInfo(itemString)
             if itemLink then
-                local itemId = string.match(itemLink, "item:([%d]+)")
+                local itemId = match(itemLink, "item:([%d]+)")
                 if itemId then
                     itemId = tonumber(itemId)
 
                     local texts, cached, failedAttempt = self:ScanTooltip(itemLink, itemId, itemLevel)
-                    if failedAttempt then
+                    if failedAttempt or not cached then
                         self:Print("Item " .. itemString .. ": ScanTooltip failed")
                         return
                     end
@@ -393,8 +403,10 @@ function Buffet:TableCount(t)
     return c
 end
 
-function Buffet:MakeTooltip()
-    local tooltip = buffetTooltipFromTemplate or CreateFrame("GAMETOOLTIP", "buffetTooltipFromTemplate", nil, "GameTooltipTemplate")
+function Buffet:GetTooltip()
+    local tooltip = buffetTooltipFromTemplate or CreateFrame("GameToolTip", "buffetTooltipFromTemplate", nil, "GameTooltipTemplate")
+    tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
+    tooltip:ClearLines()
     return tooltip
 end
 
@@ -406,27 +418,37 @@ function Buffet:ScanTooltip(itemLink, itemId, itemLevel)
     if tooltipCache[itemId] then
         cached = true
         self:StatsTimerUpdate("ScanTooltip", t)
-        return tooltipCache[itemId], cached
+        return tooltipCache[itemId], cached, false
     end
 
     local texts = {}
-    local tooltip = buffetTooltipFromTemplate or self:MakeTooltip()
-    tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
-    tooltip:ClearLines()
+    local tooltip = self:GetTooltip()
     tooltip:SetHyperlink(itemLink)
 
+    local isHealthItem = false
+    local isManaItem = false
     local isConjuredItem = false
 
     -- [[
-    for i = 1, tooltip:NumLines() do
+    local lineCount = 1
+    for i = 2, tooltip:NumLines() do
         local text = _G["buffetTooltipFromTemplateTextLeft" .. i]:GetText() or ""
+        text = self:Trim(text)
         if text ~= "" then
-            texts[i] = text
+            texts[lineCount] = text
+            lineCount = lineCount + 1
+            if self:StringContains(text:lower(), KeyWords.Health:lower()) then
+                isHealthItem = true
+            end
+            if self:StringContains(text:lower(), KeyWords.Mana:lower()) then
+                isManaItem = true
+            end
             if self:StringContains(text:lower(), KeyWords.ConjuredItem:lower()) then
                 isConjuredItem = true
             end
         end
     end
+    tooltip:Hide()
     --]]
 
     --[[
@@ -450,18 +472,22 @@ function Buffet:ScanTooltip(itemLink, itemId, itemLevel)
         neededLines = neededLines - 1
     end
 
-    local l = self:TableCount(texts)
-    if l >= neededLines then
+    neededLines = neededLines - 1
+
+    --local l = self:TableCount(texts)
+    if (lineCount >= neededLines) and (isHealthItem or isManaItem) then
         tooltipCache[itemId] = texts
+        scanAttempt[itemId] = 0
         cached = true
     else
         if scanAttempt[itemId] then
-            -- try to scan tooltip only 3 times
-            if scanAttempt[itemId] < 3 then
+            -- try to scan tooltip only 5 times
+            if scanAttempt[itemId] < 5 then
                 failedAttempt = true
                 scanAttempt[itemId] = scanAttempt[itemId] + 1
             else
                 tooltipCache[itemId] = texts
+                scanAttempt[itemId] = 0
                 cached = true
             end
         else
@@ -604,9 +630,6 @@ function Buffet:ScanDynamic()
                 local validHealth = not isHealth or (isHealth and (health and (health > 0)))
                 local validMana   = not isMana   or (isMana   and (mana   and (mana   > 0)))
                 itemFoundInCache = isWellFed or validHealth or validMana
-                if itemFoundInCache then
-                    -- self:Debug("cache found for: ", itemId, itemName)
-                end
             end
 
             -- if not found, scan and parse tooltip
@@ -615,25 +638,24 @@ function Buffet:ScanDynamic()
                 local texts, cached, failedAttempt = self:ScanTooltip(itemLink, itemId, itemLevel)
                 if failedAttempt then
                     delayedScanRequired = true
-                end
-                isHealth, isMana, isConjured, isWellFed, health, mana, isPct, isPotion, isBandage = self:ParseTexts(texts, itemClassId, itemSubClassId)
+                else
+                    isHealth, isMana, isConjured, isWellFed, health, mana, isPct, isPotion, isBandage = self:ParseTexts(texts, itemClassId, itemSubClassId)
 
-                local canCacheHealth = not isHealth or (isHealth and (health and (health > 0)))
-                local canCacheMana   = not isMana   or (isMana   and (mana   and (mana   > 0)))
+                    local canCacheHealth = not isHealth or (isHealth and (health and (health > 0)))
+                    local canCacheMana   = not isMana   or (isMana   and (mana   and (mana   > 0)))
 
-                if cached and (isWellFed or canCacheHealth or canCacheMana) then
-                    --self:Debug("cache set for: ", itemId, itemName)
-
-                    itemCache[itemId] = {}
-                    itemCache[itemId].isHealth = isHealth
-                    itemCache[itemId].isMana = isMana
-                    itemCache[itemId].isConjured = isConjured
-                    itemCache[itemId].isWellFed = isWellFed
-                    itemCache[itemId].isPct = isPct
-                    itemCache[itemId].isPotion = isPotion
-                    itemCache[itemId].isBandage = isBandage
-                    itemCache[itemId].health = health
-                    itemCache[itemId].mana = mana
+                    if cached and (isWellFed or canCacheHealth or canCacheMana) then
+                        itemCache[itemId] = {}
+                        itemCache[itemId].isHealth = isHealth
+                        itemCache[itemId].isMana = isMana
+                        itemCache[itemId].isConjured = isConjured
+                        itemCache[itemId].isWellFed = isWellFed
+                        itemCache[itemId].isPct = isPct
+                        itemCache[itemId].isPotion = isPotion
+                        itemCache[itemId].isBandage = isBandage
+                        itemCache[itemId].health = health
+                        itemCache[itemId].mana = mana
+                    end
                 end
             end
 
@@ -761,13 +783,13 @@ end
 
 function Buffet:StripThousandSeparator(text)
     if type(ThousandSeparator) == "string" then
-        return text:gsub(ThousandSeparator, "")
+        text = text:gsub(ThousandSeparator, "")
     elseif type(ThousandSeparator) == "table" then
         for i, v in ipairs(ThousandSeparator) do
             text = text:gsub(v, "")
         end
-        return text
     end
+    return text
 end
 
 function Buffet:ReplaceFakeSpace(text)
@@ -846,14 +868,14 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                 if IsClassic then
                     local value, v1, v2 = nil, nil, nil
                     if isBandage then
-                        v1, v2 = text:match(Classic_Patterns.Bandage)
+                        v1, v2 = match(text, Classic_Patterns.Bandage)
                         if GetLocale() == "deDE" then
                             value = v2
                         else
                             value = v1
                         end
                     else
-                        v1, v2 = text:match(Classic_Patterns.Food)
+                        v1, v2 = match(text, Classic_Patterns.Food)
                         if GetLocale() == "deDE" then
                             value = v2
                         else
@@ -861,7 +883,7 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                         end
                         if not value then
                             -- check for potion
-                            v1, v2 = text:match(Classic_Patterns.HealthPotion)
+                            v1, v2 = match(text, Classic_Patterns.HealthPotion)
                             if v1 and v2 then
                                 isPotion = true
                                 v1 = self:StripThousandSeparator(v1)
@@ -881,7 +903,7 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                 else
                     if isBandage then
                         if self:StringContains(text, KeyWords.Heals:lower()) then
-                            local value = text:match(Patterns.FlatDamage);
+                            local value = match(text, Patterns.FlatDamage);
                             if value then
                                 value = self:StripThousandSeparator(value)
                                 health = tonumber(value)
@@ -889,20 +911,20 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                         end
                     else
                         if self:StringContains(text, KeyWords.Restores:lower()) then
-                            local value = text:match(Patterns.PctHealth);
+                            local value = match(text, Patterns.PctHealth);
                             if value then
                                 isPct = true
                                 value = self:StripThousandSeparator(value)
                                 health = (tonumber(value) / 100) -- * myhealth;
                             else
-                                value = text:match(Patterns.FlatHealth);
+                                value = match(text, Patterns.FlatHealth);
                                 if value then
                                     value = self:StripThousandSeparator(value)
                                     health = tonumber(value)
                                 end
                             end
                             if health and (health > 0) and isOverTime then
-                                local overTime = text:match(Patterns.OverTime)
+                                local overTime = match(text, Patterns.OverTime)
                                 if overTime then
                                     health = health * tonumber(overTime)
                                 end
@@ -915,7 +937,7 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
             if isMana then
                 if IsClassic then
                     local value, v1, v2 = nil, nil, nil
-                    v1, v2 = text:match(Classic_Patterns.Drink)
+                    v1, v2 = match(text, Classic_Patterns.Drink)
                     if GetLocale() == "deDE" then
                         value = v2
                     else
@@ -923,7 +945,7 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                     end
                     if not value then
                         -- check for potion
-                        v1, v2 = text:match(Classic_Patterns.ManaPotion)
+                        v1, v2 = match(text, Classic_Patterns.ManaPotion)
                         if v1 and v2 then
                             isPotion = true
                             v1 = self:StripThousandSeparator(v1)
@@ -946,13 +968,13 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                             offsetMana = text:find(KeyWords.Health)
                         end
 
-                        local value = text:match(Patterns.PctMana, offsetMana)
+                        local value = match(text, Patterns.PctMana, offsetMana)
                         if value then
                             isPct = true
                             value = self:StripThousandSeparator(value)
                             mana = (tonumber(value) / 100) -- * mymana;
                         else
-                            value = text:match(Patterns.FlatMana, offsetMana);
+                            value = match(text, Patterns.FlatMana, offsetMana);
                             if value then
                                 value = self:StripThousandSeparator(value)
                                 mana = tonumber(value)
@@ -961,13 +983,13 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
 
                         -- in some cases there is only one value for health and mana, so we need to try without the offsetMana
                         if not value then
-                            value = text:match(Patterns.PctMana);
+                            value = match(text, Patterns.PctMana);
                             if value then
                                 isPct = true
                                 value = self:StripThousandSeparator(value)
                                 mana = (tonumber(value) / 100) -- * mymana;
                             else
-                                value = text:match(Patterns.FlatMana);
+                                value = match(text, Patterns.FlatMana);
                                 if value then
                                     value = self:StripThousandSeparator(value)
                                     mana = tonumber(value)
@@ -976,7 +998,7 @@ function Buffet:ParseTexts(texts, itemClassId, itemSubClassId)
                         end
 
                         if mana and (mana > 0) and isOverTime then
-                            local overTime = text:match(Patterns.OverTime)
+                            local overTime = match(text, Patterns.OverTime)
                             if overTime then
                                 mana = mana * tonumber(overTime)
                             end
@@ -1061,4 +1083,8 @@ function Buffet:Edit(name, substring, food, pot, mod)
     body = body .. "item:" .. (food or "6948")
 
     EditMacro(macroid, name, "INV_Misc_QuestionMark", substring:gsub("%%MACRO%%", body), 1)
+end
+
+function Buffet:Trim(s)
+    return match(s,'^()%s*$') and '' or match(s,'^%s*(.*%S)')
 end

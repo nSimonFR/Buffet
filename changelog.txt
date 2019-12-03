@@ -1,3 +1,9 @@
+### 8.2.5.57-Beta
+
+* Fix issue with tooltip scanning
+* Few small optimizations
+
+
 ### 8.2.5.56
 
 * Fix issue with item cache
